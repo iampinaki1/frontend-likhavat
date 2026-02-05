@@ -1,0 +1,35 @@
+@import "tailwindcss";
+body{
+    background: #020617;
+}
+
+
+
+#particleBox {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  overflow: hidden;
+
+}
+
+
+.particle {
+  position: absolute;
+  bottom: -50px;
+  color: rgba(255,255,255,0.6);
+  font-weight: 600;
+  text-shadow:
+    0 0 6px rgba(255,255,255,0.35),
+    0 0 12px rgba(147,197,253,0.25);
+  animation: floatUp linear infinite;
+  white-space: nowrap;
+}
+
+@keyframes floatUp {
+  from { transform: translateY(0); opacity: 0; }
+  10% { opacity: 0.25; }
+  to { transform: translateY(-120vh); opacity: 0; }
+}
+
