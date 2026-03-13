@@ -1,0 +1,409 @@
+import React, { useState, useRef, useEffect, useCallback } from "react";
+import { useNavigate } from "react-router-dom";
+import { useApp } from "../../context/Appcontext.jsx";
+import { Heart, User, ChevronUp, ChevronDown } from "lucide-react";
+import { toast } from "sonner";
+
+export function PoemsPage() {
+
+  const { poems, currentUser, toggleLike, followUser, users } = useApp();
+  const navigate = useNavigate();
+
+  const [currentIndex, setCurrentIndex] = useState(0);
+
+  const containerRef = useRef(null);
+  const contentRef = useRef(null);
+
+  const isScrolling = useRef(false);
+
+  const currentPoem = poems[currentIndex];
+  const author = users.find((u) => u.id === currentPoem?.author);
+
+  const poemPages = React.useMemo(() => {
+    if (!currentPoem) return [];
+    const lines = currentPoem.content.split('\n');
+    const pages = [];
+    const linesPerPage = 14;
+    for (let i = 0; i < lines.length; i += linesPerPage) {
+      pages.push(lines.slice(i, i + linesPerPage).join('\n'));
+    }
+    return pages;
+  }, [currentPoem]);
+
+
+  const isFollowing =
+    currentUser?.following.includes(currentPoem?.author?._id || currentPoem?.author) || false;
+
+  const hasRequested =
+    currentUser?.sentRequests?.includes(currentPoem?.author?._id || currentPoem?.author) || false;
+
+  const isLiked =
+    currentPoem && currentUser
+      ? currentPoem.likes.includes(currentUser._id || currentUser.id)
+      : false;
+
+  const goToNext = useCallback(() => {
+
+    if (currentIndex < poems.length - 1) {
+
+      setCurrentIndex((prev) => prev + 1);
+
+      setTimeout(() => {
+        if (contentRef.current) {
+          contentRef.current.scrollTop = 0;
+          contentRef.current.scrollLeft = 0;
+        }
+      }, 50);
+
+    }
+
+  }, [currentIndex, poems.length]);
+
+  const goToPrevious = useCallback(() => {
+
+    if (currentIndex > 0) {
+
+      setCurrentIndex((prev) => prev - 1);
+
+      setTimeout(() => {
+        if (contentRef.current) {
+          contentRef.current.scrollTop = 0;
+          contentRef.current.scrollLeft = 0;
+        }
+      }, 50);
+
+    }
+
+  }, [currentIndex]);
+
+  useEffect(() => {
+
+    const handleWheel = (e) => {
+
+      if (isScrolling.current) return;
+
+      // Check if vertical scroll is dominant
+      if (Math.abs(e.deltaY) > Math.abs(e.deltaX)) {
+        e.preventDefault();
+        isScrolling.current = true;
+
+        if (e.deltaY > 0) {
+          goToNext();
+        } else {
+          goToPrevious();
+        }
+
+        setTimeout(() => {
+          isScrolling.current = false;
+        }, 800);
+      }
+
+    };
+
+    const container = containerRef.current;
+
+    if (container) {
+      container.addEventListener("wheel", handleWheel, { passive: false });
+    }
+
+    return () => {
+      if (container) {
+        container.removeEventListener("wheel", handleWheel);
+      }
+    };
+
+  }, [goToNext, goToPrevious]);
+
+  useEffect(() => {
+
+    const handleKeyDown = (e) => {
+
+      if (e.key === "ArrowDown") {
+        e.preventDefault();
+        goToNext();
+      }
+
+      else if (e.key === "ArrowUp") {
+        e.preventDefault();
+        goToPrevious();
+      }
+
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+
+    return () => window.removeEventListener("keydown", handleKeyDown);
+
+  }, [goToNext, goToPrevious]);
+
+  const handleLike = () => {
+    if (!currentPoem || !currentUser) return;
+    toggleLike(currentPoem._id || currentPoem.id, "poem");
+    toast.success(isLiked ? "Removed like" : "Poem liked!");
+  };
+
+  const handleFollow = () => {
+    if (!currentPoem || !currentUser) return;
+    followUser(currentPoem.author?._id || currentPoem.author);
+    toast.success(
+      isFollowing
+        ? `Unfollowed ${currentPoem.author?.username || currentPoem.authorName}`
+        : `Following ${currentPoem.author?.username || currentPoem.authorName}`
+    );
+  };
+
+  const handleProfileClick = () => {
+    if (!currentPoem) return;
+    navigate(`/profile/${currentPoem.author?.username || currentPoem.authorName}`);
+  };
+
+  if (!currentPoem) {
+
+    return (
+
+      <div
+        className="flex items-center justify-center h-screen"
+      >
+
+        <div
+          className="rounded-xl border shadow-sm w-full max-w-sm overflow-hidden p-8 text-center"
+          style={{
+            backgroundColor: "#FFF8ED",
+            borderColor: "#E5D4C1"
+          }}
+        >
+
+          <h2 className="text-xl font-semibold mb-2">
+            No Poems Available
+          </h2>
+
+          <p className="text-gray-600">
+            Check back later for new content!
+          </p>
+
+        </div>
+
+      </div>
+
+    );
+
+  }
+
+  return (
+
+    <div
+      ref={containerRef}
+      className="fixed inset-0 overflow-hidden"
+      style={{ top: "64px" }}
+    >
+
+      {/* Poem Container */}
+      <div className="relative w-full h-full flex items-center justify-center pb-16 md:pb-0">
+        {/* Main Poem Card */}
+        <div className="w-full max-w-2xl h-full flex flex-col justify-center px-2 sm:px-4 md:px-8">
+          <div
+            className="rounded-xl shadow-2xl overflow-hidden w-full flex flex-col mx-auto"
+            style={{
+              backgroundColor: '#FFF8ED',
+              border: '2px solid #E5D4C1',
+              maxHeight: '85vh'
+            }}
+          >
+            {/* Poem Content */}
+            <div
+              ref={contentRef}
+              className="flex overflow-x-auto snap-x snap-mandatory"
+              style={{
+                maxHeight: 'calc(85vh - 80px)', // adjusted for pagination and author section
+                scrollbarWidth: 'none',
+              }}
+            >
+              <style>{`.hide-scrollbar-local::-webkit-scrollbar { display: none; }`}</style>
+              {poemPages.map((page, index) => (
+                <div key={index} className="min-w-full flex-shrink-0 snap-center p-5 sm:p-8 md:p-12 pb-4 overflow-y-hidden hide-scrollbar-local" style={{ scrollbarWidth: 'none' }}>
+                  {index === 0 && (
+                    <div className="mb-4 sm:mb-6">
+                      <div className="inline-flex items-center rounded-full border px-2 sm:px-2.5 py-0.5 text-[10px] sm:text-xs font-semibold mb-2 sm:mb-3 border-transparent" style={{ backgroundColor: '#D4A574', color: '#FFFFFF' }}>
+                        {currentPoem.subject}
+                      </div>
+                      <h2 className="text-2xl sm:text-3xl md:text-4xl font-serif mb-3 sm:mb-4" style={{ color: '#333333' }}>
+                        {currentPoem.title}
+                      </h2>
+                    </div>
+                  )}
+                  <div className="prose prose-base sm:prose-lg max-w-none">
+                    <p className="whitespace-pre-wrap font-serif leading-relaxed text-gray-800 text-base sm:text-lg">
+                      {page}
+                    </p>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            {/* Pagination Dots */}
+            {poemPages.length > 1 && (
+              <div className="flex justify-center space-x-2 py-3 bg-opacity-90 z-10" style={{ backgroundColor: '#FFF8ED' }}>
+                {poemPages.map((_, i) => (
+                  <div key={i} className="w-2 h-2 rounded-full" style={{ backgroundColor: '#D4A574', opacity: 0.6 }} />
+                ))}
+              </div>
+            )}
+
+            {/* Author Section at Bottom */}
+            <div
+              className="p-3 sm:p-4 border-t flex-shrink-0"
+              style={{ backgroundColor: '#FFFFFF', borderColor: '#E5D4C1' }}
+            >
+              <div className="flex items-center justify-between">
+                <div className="flex items-center space-x-2 sm:space-x-3 flex-1">
+                  <button onClick={handleProfileClick} className="focus:outline-none">
+                    <div className="relative flex-shrink-0 h-10 w-10 sm:h-12 sm:w-12 rounded-full overflow-hidden cursor-pointer hover:opacity-80 transition-opacity">
+                      {currentPoem.author?.profilePic || currentPoem.authorProfilePic ? (
+                        <img src={currentPoem.author?.profilePic || currentPoem.authorProfilePic} alt={currentPoem.author?.username || currentPoem.authorName} className="aspect-square h-full w-full object-cover" />
+                      ) : (
+                        <div className="flex h-full w-full items-center justify-center font-medium" style={{ backgroundColor: '#D4A574', color: '#FFFFFF' }}>
+                          <User className="w-5 h-5 sm:w-6 sm:h-6" />
+                        </div>
+                      )}
+                    </div>
+                  </button>
+                  <div className="flex-1 min-w-0">
+                    <button
+                      onClick={handleProfileClick}
+                      className="font-semibold text-sm sm:text-base hover:underline focus:outline-none text-left truncate block w-full"
+                    >
+                      {currentPoem.author?.username || currentPoem.authorName}
+                    </button>
+                    <p className="text-xs sm:text-sm text-gray-500">
+                      {currentPoem.likes.length} {currentPoem.likes.length === 1 ? 'like' : 'likes'}
+                    </p>
+                  </div>
+                </div>
+                {currentUser && currentUser._id !== (currentPoem.author?._id || currentPoem.author) && (
+                  hasRequested ? (
+                    <button
+                      disabled
+                      className="inline-flex items-center justify-center rounded-md text-xs sm:text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:opacity-50 disabled:pointer-events-none ring-offset-background h-8 sm:h-9 px-2 sm:px-3 border whitespace-nowrap ml-2 bg-gray-200 text-gray-500"
+                    >
+                      Requested
+                    </button>
+                  ) : (
+                    <button
+                      onClick={handleFollow}
+                      className="inline-flex items-center justify-center rounded-md text-xs sm:text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none ring-offset-background hover:bg-gray-100 h-8 sm:h-9 px-2 sm:px-3 border whitespace-nowrap ml-2"
+                      style={
+                        isFollowing
+                          ? { borderColor: '#D4A574', color: '#D4A574', backgroundColor: 'transparent' }
+                          : { backgroundColor: '#D4A574', color: '#FFFFFF', borderColor: 'transparent' }
+                      }
+                    >
+                      {isFollowing ? 'Following' : 'Follow'}
+                    </button>
+                  )
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Right Side Actions (Like YouTube Shorts) */}
+        <div className="fixed right-2 sm:right-4 md:right-8 bottom-24 sm:bottom-32 flex flex-col space-y-4 sm:space-y-6 z-10">
+          {/* Like Button */}
+          <button
+            onClick={handleLike}
+            className="flex flex-col items-center space-y-1 focus:outline-none group"
+          >
+            <div
+              className="w-10 h-10 sm:w-12 sm:h-12 md:w-14 md:h-14 rounded-full shadow-lg flex items-center justify-center transition-transform group-hover:scale-110"
+              style={{
+                backgroundColor: isLiked ? '#D4A574' : '#FFF8ED',
+                border: '2px solid #E5D4C1'
+              }}
+            >
+              <Heart
+                className={`w-5 h-5 sm:w-6 sm:h-6 md:w-7 md:h-7 ${isLiked ? 'fill-current' : ''}`}
+                style={{ color: isLiked ? '#FFFFFF' : '#D4A574' }}
+              />
+            </div>
+            <span className="text-xs sm:text-sm font-medium" style={{ color: '#FFF8ED' }}>
+              {currentPoem.likes.length}
+            </span>
+          </button>
+
+          {/* Author Avatar (clickable) */}
+          <button
+            onClick={handleProfileClick}
+            className="focus:outline-none group hidden sm:block"
+          >
+            <div className="relative">
+              <div className="relative flex-shrink-0 w-10 h-10 sm:w-12 sm:h-12 md:w-14 md:h-14 rounded-full overflow-hidden border-2 transition-transform group-hover:scale-110" style={{ borderColor: '#E5D4C1' }}>
+                {currentPoem.author?.profilePic || currentPoem.authorProfilePic ? (
+                  <img src={currentPoem.author?.profilePic || currentPoem.authorProfilePic} alt={currentPoem.author?.username || currentPoem.authorName} className="aspect-square h-full w-full object-cover" />
+                ) : (
+                  <div className="flex h-full w-full items-center justify-center font-medium" style={{ backgroundColor: '#D4A574', color: '#FFFFFF' }}>
+                    <User className="w-5 h-5 sm:w-6 sm:h-6 md:w-7 md:h-7" />
+                  </div>
+                )}
+              </div>
+              {currentUser && currentUser._id !== (currentPoem.author?._id || currentPoem.author) && !isFollowing && (
+                <div
+                  className="absolute -bottom-2 left-1/2 transform -translate-x-1/2 w-5 h-5 sm:w-6 sm:h-6 rounded-full flex items-center justify-center text-white text-lg sm:text-xl font-bold cursor-pointer"
+                  style={{ backgroundColor: '#D4A574' }}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleFollow();
+                  }}
+                >
+                  +
+                </div>
+              )}
+            </div>
+          </button>
+        </div>
+
+        {/* Navigation Arrows */}
+        {currentIndex > 0 && (
+          <button
+            onClick={goToPrevious}
+            className="fixed top-[15%] sm:top-1/4 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-8 h-8 sm:w-10 sm:h-10 md:w-12 md:h-12 rounded-full shadow-lg flex items-center justify-center focus:outline-none hover:opacity-50 transition-opacity z-10"
+            style={{ backgroundColor: '#FFF8ED', border: '2px solid #E5D4C1' }}
+          >
+            <ChevronUp className="w-4 h-4 sm:w-5 sm:h-5 md:w-6 md:h-6" style={{ color: '#D4A574' }} />
+          </button>
+        )}
+
+        {currentIndex < poems.length - 1 && (
+          <button
+            onClick={goToNext}
+            className="fixed bottom-[10%] sm:bottom-[15%] left-1/2 transform -translate-x-1/2 translate-y-1/2 w-8 h-8 sm:w-10 sm:h-10 md:w-12 md:h-12 rounded-full shadow-lg flex items-center justify-center focus:outline-none hover:opacity-50 transition-opacity z-10"
+            style={{ backgroundColor: '#FFF8ED', border: '2px solid #E5D4C1' }}
+          >
+            <ChevronDown className="w-4 h-4 sm:w-5 sm:h-5 md:w-6 md:h-6" style={{ color: '#D4A574' }} />
+          </button>
+        )}
+
+        {/* Progress Indicator */}
+        <div className="fixed bottom-4 left-1/2 transform -translate-x-1/2 px-4 py-2 rounded-full z-10" style={{ backgroundColor: 'rgba(255, 248, 237, 0.9)' }}>
+          <p className="text-sm font-medium" style={{ color: '#333333' }}>
+            {currentIndex + 1} / {poems.length}
+          </p>
+        </div>
+
+        {/* Scroll Hint (appears for first poem) */}
+        {currentIndex === 0 && (
+          <div className="fixed top-20 left-1/2 transform -translate-x-1/2 animate-bounce z-10">
+            <p className="text-sm font-medium px-4 py-2 rounded-full" style={{ backgroundColor: 'rgba(255, 248, 237, 0.8)', color: '#333333' }}>
+              Scroll or use arrow keys ↓↑
+            </p>
+          </div>
+        )}
+      </div>
+      {/* Rest of your JSX layout stays exactly the same */}
+
+    </div>
+
+  );
+
+}
+
+export default PoemsPage;
