@@ -111,20 +111,25 @@ export function AppProvider({ children }) {
   };
 
   // Fetch application data only when the user is fully authenticated
+  // Use a ref to track if we've already fetched to prevent duplicate calls
+  const [hasFetchedData, setHasFetchedData] = useState(false);
+  
   useEffect(() => {
-    if (currentUser?._id) {
+    if (currentUser?._id && !hasFetchedData) {
       fetchFollowRequests();
       fetchUsers();
       fetchBooks();
       fetchScripts();
       fetchPoems();
-    } else {
+      setHasFetchedData(true);
+    } else if (!currentUser?._id) {
       // Clear data to completely scrub local memory on logout/failure
       setBooks([]);
       setScripts([]);
       setPoems([]);
       setUsers([]);
       setFollowRequests([]);
+      setHasFetchedData(false);
     }
   }, [currentUser?._id]);
 

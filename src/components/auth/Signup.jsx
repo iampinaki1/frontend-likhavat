@@ -3,7 +3,7 @@ import GlassCard from '../GlassCard';
 import { toast } from 'sonner';
 import { Link, useNavigate } from 'react-router-dom';
 import { useApp } from '../../context/Appcontext.jsx';
-import { Eye, EyeOff } from 'lucide-react';
+import { Eye, EyeOff, Loader2 } from 'lucide-react';
 import { z } from 'zod';
 
 const signupSchema = z.object({
@@ -27,6 +27,7 @@ function Signup() {
   const [termsAccepted, setTermsAccepted] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
 
   const navigate = useNavigate();
   const { signup } = useApp();
@@ -40,7 +41,10 @@ function Signup() {
       return;
     }
 
+    setIsLoading(true);
     const result = await signup(username, password, email);
+    setIsLoading(false);
+    
     if (result.success) {
       toast.success('Account created! Please verify your email.');
       navigate('/verify', { state: { tempUserId: result.tempUserId } });
@@ -131,10 +135,13 @@ function Signup() {
           <button
             className="border select-none bg-blue-950 text-white rounded-2xl px-7 py-2 font-bold
              hover:bg-blue-800 hover:scale-105
-             transition duration-200 cursor-pointer"
+             transition duration-200 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed
+             flex items-center justify-center gap-2"
             type="submit"
+            disabled={isLoading}
           >
-            Create Account
+            {isLoading && <Loader2 className="w-4 h-4 animate-spin" />}
+            {isLoading ? 'Creating Account...' : 'Create Account'}
           </button>
           <Link to="/signin" className="mt-4 select-none text-sm text-blue-400 block
              hover:text-blue-300 hover:underline

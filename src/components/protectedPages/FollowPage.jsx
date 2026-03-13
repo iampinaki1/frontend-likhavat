@@ -1,12 +1,14 @@
 import React, { useState } from 'react';
-import { useApp } from "../../context/Appcontext.jsx";
+import { useApp, api } from "../../context/Appcontext.jsx";
 import { Search, UserPlus, UserMinus, Check, X, User } from 'lucide-react';
 import { Link } from 'react-router-dom';
+import { toast } from 'sonner';
 
 export function FollowPage() {
-  const { currentUser, users, followRequests, followUser, unfollowUser, acceptFollowRequest, rejectFollowRequest } = useApp();
+  const { currentUser, setCurrentUser, users, followRequests, acceptFollowRequest, rejectFollowRequest } = useApp();
   const [searchQuery, setSearchQuery] = useState('');
   const [activeTab, setActiveTab] = useState('suggestions');
+  const [loadingState, setLoadingState] = useState({});
 
   // Filter global users (exclude self)
   const otherUsers = (users || []).filter(u => u._id !== currentUser?._id);
@@ -25,12 +27,60 @@ export function FollowPage() {
   // The request object has sender populated: { sender: { _id, username, profilePic }, status, _id as requestId }
   const requests = followRequests || [];
 
-  const handleFollow = (username) => {
-    followUser(username);
+  const handleFollow = async (username, userId) => {
+    if (loadingState[userId]) return;
+    
+    setLoadingState(prev => ({ ...prev, [userId]: true }));
+    
+    try {
+      const response = await api.post(`/user/${username}/followunfollow`);
+      
+      if (response.data?.status === "pending") {
+        // Private user - request sent
+        setCurrentUser(prev => ({
+          ...prev,
+          sentRequests: [...(prev.sentRequests || []), userId]
+        }));
+        toast.success("Follow request sent");
+      } else if (response.data.msg === "Followed") {
+        // Public user - followed successfully
+        setCurrentUser(prev => ({
+          ...prev,
+          following: [...(prev.following || []), userId]
+        }));
+        toast.success("Following user");
+      }
+    } catch (err) {
+      console.error("Follow error:", err);
+      toast.error(err.response?.data?.msg || "Failed to follow");
+    } finally {
+      setLoadingState(prev => ({ ...prev, [userId]: false }));
+    }
   };
 
-  const handleUnfollow = (username) => {
-    unfollowUser(username);
+  const handleUnfollow = async (username, userId) => {
+    if (loadingState[userId]) return;
+    
+    setLoadingState(prev => ({ ...prev, [userId]: true }));
+    
+    try {
+      const response = await api.post(`/user/${username}/followunfollow`);
+      
+      if (response.data.msg === "Unfollowed") {
+        setCurrentUser(prev => ({
+          ...prev,
+          following: (prev.following || []).filter(id => 
+            id.toString ? id.toString() !== userId.toString() : id !== userId
+          )
+        }));
+        toast.success("Unfollowed successfully");
+      }
+    } catch (err) {
+      console.error("Unfollow error:", err);
+      toast.error("Failed to unfollow");
+    } finally {
+      setLoadingState(prev => ({ ...prev, [userId]: false }));
+    }
   };
 
   const handleAcceptRequest = (requestId) => {
@@ -123,7 +173,10 @@ export function FollowPage() {
                 filteredUsers.length > 0 ? (
                   <div className="space-y-3">
                     {filteredUsers.map((user) => {
+                      const isRequestSent = currentUser?.sentRequests?.includes(user._id);
                       const isUserFollowing = currentUser?.following?.includes(user._id);
+                      const isLoading = loadingState[user._id];
+                      
                       return (
                         <div key={user._id} className="rounded-xl border bg-white shadow-sm" style={{ borderColor: '#E5D4C1' }}>
                           <div className="p-4 flex items-center space-x-4">
@@ -144,42 +197,34 @@ export function FollowPage() {
                               </Link>
                               <p className="text-sm text-gray-600 truncate">{user.bio || 'No bio'}</p>
                             </div>
-                            {currentUser?.sentRequests?.includes(user._id) ? (
+                            {isRequestSent ? (
                               <button
                                 type="button"
                                 disabled
                                 className="inline-flex items-center justify-center rounded-md text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:opacity-50 disabled:pointer-events-none ring-offset-background h-9 px-3 shadow bg-gray-200 text-gray-500"
                               >
-                                Requested
+                                Sent Request
                               </button>
                             ) : isUserFollowing ? (
                               <button
                                 type="button"
-                                onClick={() => handleUnfollow(user.username)}
+                                onClick={() => handleUnfollow(user.username, user._id)}
+                                disabled={isLoading}
                                 className="inline-flex items-center justify-center rounded-md text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:opacity-50 disabled:pointer-events-none ring-offset-background border border-gray-200 bg-white hover:bg-gray-100 hover:text-gray-900 h-9 px-3"
                               >
                                 <UserMinus className="w-4 h-4 mr-1" />
-                                Unfollow
-                              </button>
-                            ) : user.isPrivate ? (
-                              <button
-                                type="button"
-                                onClick={() => handleFollow(user.username)}
-                                className="inline-flex items-center justify-center rounded-md text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:opacity-50 disabled:pointer-events-none ring-offset-background h-9 px-3 shadow hover:opacity-90"
-                                style={{ backgroundColor: '#D4A574', color: '#FFFFFF' }}
-                              >
-                                <UserPlus className="w-4 h-4 mr-1" />
-                                Request
+                                {isLoading ? 'Loading...' : 'Unfollow'}
                               </button>
                             ) : (
                               <button
                                 type="button"
-                                onClick={() => handleFollow(user.username)}
+                                onClick={() => handleFollow(user.username, user._id)}
+                                disabled={isLoading}
                                 className="inline-flex items-center justify-center rounded-md text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:opacity-50 disabled:pointer-events-none ring-offset-background h-9 px-3 shadow hover:opacity-90"
                                 style={{ backgroundColor: '#D4A574', color: '#FFFFFF' }}
                               >
                                 <UserPlus className="w-4 h-4 mr-1" />
-                                Follow
+                                {isLoading ? 'Loading...' : (user.isPrivate ? 'Request' : 'Follow')}
                               </button>
                             )}
                           </div>
@@ -194,58 +239,65 @@ export function FollowPage() {
                 )
               ) : (
                 <div className="space-y-3">
-                  {suggestions.map((user) => (
-                    <div key={user._id} className="rounded-xl border bg-white shadow-sm" style={{ borderColor: '#E5D4C1' }}>
-                      <div className="p-4 flex items-center space-x-4">
-                        <Link to={`/profile/${user.username}`}>
-                          <div className="relative flex-shrink-0 h-12 w-12 rounded-full overflow-hidden border" style={{ borderColor: '#E5D4C1' }}>
-                            {user.profilePic ? (
-                              <img src={user.profilePic} alt={user.username} className="aspect-square h-full w-full object-cover" />
-                            ) : (
-                              <div className="flex h-full w-full items-center justify-center bg-gray-100">
-                                <User className="h-6 w-6 text-gray-400" />
-                              </div>
-                            )}
-                          </div>
-                        </Link>
-                        <div className="flex-1">
-                          <Link to={`/profile/${user.username}`} className="font-semibold hover:underline">
-                            {user.username}
+                  {suggestions.map((user) => {
+                    const isRequestSent = currentUser?.sentRequests?.includes(user._id);
+                    const isUserFollowing = currentUser?.following?.includes(user._id);
+                    const isLoading = loadingState[user._id];
+                    
+                    return (
+                      <div key={user._id} className="rounded-xl border bg-white shadow-sm" style={{ borderColor: '#E5D4C1' }}>
+                        <div className="p-4 flex items-center space-x-4">
+                          <Link to={`/profile/${user.username}`}>
+                            <div className="relative flex-shrink-0 h-12 w-12 rounded-full overflow-hidden border" style={{ borderColor: '#E5D4C1' }}>
+                              {user.profilePic ? (
+                                <img src={user.profilePic} alt={user.username} className="aspect-square h-full w-full object-cover" />
+                              ) : (
+                                <div className="flex h-full w-full items-center justify-center bg-gray-100">
+                                  <User className="h-6 w-6 text-gray-400" />
+                                </div>
+                              )}
+                            </div>
                           </Link>
-                          <p className="text-sm text-gray-600 truncate">{user.bio || 'No bio'}</p>
+                          <div className="flex-1">
+                            <Link to={`/profile/${user.username}`} className="font-semibold hover:underline">
+                              {user.username}
+                            </Link>
+                            <p className="text-sm text-gray-600 truncate">{user.bio || 'No bio'}</p>
+                          </div>
+                          {isRequestSent ? (
+                            <button
+                              type="button"
+                              disabled
+                              className="inline-flex items-center justify-center rounded-md text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:opacity-50 disabled:pointer-events-none ring-offset-background h-9 px-3 shadow bg-gray-200 text-gray-500"
+                            >
+                              Sent Request
+                            </button>
+                          ) : isUserFollowing ? (
+                            <button
+                              type="button"
+                              onClick={() => handleUnfollow(user.username, user._id)}
+                              disabled={isLoading}
+                              className="inline-flex items-center justify-center rounded-md text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:opacity-50 disabled:pointer-events-none ring-offset-background border border-gray-200 bg-white hover:bg-gray-100 hover:text-gray-900 h-9 px-3"
+                            >
+                              <UserMinus className="w-4 h-4 mr-1" />
+                              {isLoading ? 'Loading...' : 'Unfollow'}
+                            </button>
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={() => handleFollow(user.username, user._id)}
+                              disabled={isLoading}
+                              className="inline-flex items-center justify-center rounded-md text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:opacity-50 disabled:pointer-events-none ring-offset-background h-9 px-3 shadow hover:opacity-90"
+                              style={{ backgroundColor: '#D4A574', color: '#FFFFFF' }}
+                            >
+                              <UserPlus className="w-4 h-4 mr-1" />
+                              {isLoading ? 'Loading...' : (user.isPrivate ? 'Request' : 'Follow')}
+                            </button>
+                          )}
                         </div>
-                        {currentUser?.sentRequests?.includes(user._id) ? (
-                          <button
-                            type="button"
-                            disabled
-                            className="inline-flex items-center justify-center rounded-md text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:opacity-50 disabled:pointer-events-none ring-offset-background h-9 px-3 shadow bg-gray-200 text-gray-500"
-                          >
-                            Requested
-                          </button>
-                        ) : user.isPrivate && !currentUser?.following?.includes(user._id) ? (
-                          <button
-                            type="button"
-                            onClick={() => handleFollow(user.username)}
-                            className="inline-flex items-center justify-center rounded-md text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:opacity-50 disabled:pointer-events-none ring-offset-background h-9 px-3 shadow hover:opacity-90"
-                            style={{ backgroundColor: '#D4A574', color: '#FFFFFF' }}
-                          >
-                            <UserPlus className="w-4 h-4 mr-1" />
-                            Request
-                          </button>
-                        ) : (
-                          <button
-                            type="button"
-                            onClick={() => handleFollow(user.username)}
-                            className="inline-flex items-center justify-center rounded-md text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:opacity-50 disabled:pointer-events-none ring-offset-background h-9 px-3 shadow hover:opacity-90"
-                            style={{ backgroundColor: '#D4A574', color: '#FFFFFF' }}
-                          >
-                            <UserPlus className="w-4 h-4 mr-1" />
-                            Follow
-                          </button>
-                        )}
                       </div>
-                    </div>
-                  ))}
+                    )
+                  })}
                 </div>
               )}
             </div>
@@ -254,45 +306,9 @@ export function FollowPage() {
           {/* Following Tab */}
           {activeTab === 'following' && (
             <div className="space-y-3">
-              {following.map((user) => (
-                <div key={user._id} className="rounded-xl border bg-white shadow-sm" style={{ borderColor: '#E5D4C1' }}>
-                  <div className="p-4 flex items-center space-x-4">
-                    <Link to={`/profile/${user.username}`}>
-                      <div className="relative flex-shrink-0 h-12 w-12 rounded-full overflow-hidden border" style={{ borderColor: '#E5D4C1' }}>
-                        {user.profilePic ? (
-                          <img src={user.profilePic} alt={user.username} className="aspect-square h-full w-full object-cover" />
-                        ) : (
-                          <div className="flex h-full w-full items-center justify-center bg-gray-100">
-                            <User className="h-6 w-6 text-gray-400" />
-                          </div>
-                        )}
-                      </div>
-                    </Link>
-                    <div className="flex-1">
-                      <Link to={`/profile/${user.username}`} className="font-semibold hover:underline">
-                        {user.username}
-                      </Link>
-                      <p className="text-sm text-gray-600 truncate">{user.bio || 'No bio'}</p>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => handleUnfollow(user.username)}
-                      className="inline-flex items-center justify-center rounded-md text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:opacity-50 disabled:pointer-events-none ring-offset-background border border-gray-200 bg-white hover:bg-gray-100 hover:text-gray-900 h-9 px-3"
-                    >
-                      <UserMinus className="w-4 h-4 mr-1" />
-                      Unfollow
-                    </button>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-
-          {/* Followers Tab */}
-          {activeTab === 'followers' && (
-            <div className="space-y-3">
-              {followers.map((user) => {
-                const isUserFollowing = currentUser?.following?.includes(user._id);
+              {following.map((user) => {
+                const isLoading = loadingState[user._id];
+                
                 return (
                   <div key={user._id} className="rounded-xl border bg-white shadow-sm" style={{ borderColor: '#E5D4C1' }}>
                     <div className="p-4 flex items-center space-x-4">
@@ -313,24 +329,78 @@ export function FollowPage() {
                         </Link>
                         <p className="text-sm text-gray-600 truncate">{user.bio || 'No bio'}</p>
                       </div>
-                      {isUserFollowing ? (
+                      <button
+                        type="button"
+                        onClick={() => handleUnfollow(user.username, user._id)}
+                        disabled={isLoading}
+                        className="inline-flex items-center justify-center rounded-md text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:opacity-50 disabled:pointer-events-none ring-offset-background border border-gray-200 bg-white hover:bg-gray-100 hover:text-gray-900 h-9 px-3"
+                      >
+                        <UserMinus className="w-4 h-4 mr-1" />
+                        {isLoading ? 'Loading...' : 'Unfollow'}
+                      </button>
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          )}
+
+          {/* Followers Tab */}
+          {activeTab === 'followers' && (
+            <div className="space-y-3">
+              {followers.map((user) => {
+                const isRequestSent = currentUser?.sentRequests?.includes(user._id);
+                const isUserFollowing = currentUser?.following?.includes(user._id);
+                const isLoading = loadingState[user._id];
+                
+                return (
+                  <div key={user._id} className="rounded-xl border bg-white shadow-sm" style={{ borderColor: '#E5D4C1' }}>
+                    <div className="p-4 flex items-center space-x-4">
+                      <Link to={`/profile/${user.username}`}>
+                        <div className="relative flex-shrink-0 h-12 w-12 rounded-full overflow-hidden border" style={{ borderColor: '#E5D4C1' }}>
+                          {user.profilePic ? (
+                            <img src={user.profilePic} alt={user.username} className="aspect-square h-full w-full object-cover" />
+                          ) : (
+                            <div className="flex h-full w-full items-center justify-center bg-gray-100">
+                              <User className="h-6 w-6 text-gray-400" />
+                            </div>
+                          )}
+                        </div>
+                      </Link>
+                      <div className="flex-1">
+                        <Link to={`/profile/${user.username}`} className="font-semibold hover:underline">
+                          {user.username}
+                        </Link>
+                        <p className="text-sm text-gray-600 truncate">{user.bio || 'No bio'}</p>
+                      </div>
+                      {isRequestSent ? (
                         <button
                           type="button"
-                          onClick={() => handleUnfollow(user.username)}
+                          disabled
+                          className="inline-flex items-center justify-center rounded-md text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:opacity-50 disabled:pointer-events-none ring-offset-background h-9 px-3 shadow bg-gray-200 text-gray-500"
+                        >
+                          Sent Request
+                        </button>
+                      ) : isUserFollowing ? (
+                        <button
+                          type="button"
+                          onClick={() => handleUnfollow(user.username, user._id)}
+                          disabled={isLoading}
                           className="inline-flex items-center justify-center rounded-md text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:opacity-50 disabled:pointer-events-none ring-offset-background border border-gray-200 bg-white hover:bg-gray-100 hover:text-gray-900 h-9 px-3"
                         >
                           <UserMinus className="w-4 h-4 mr-1" />
-                          Unfollow
+                          {isLoading ? 'Loading...' : 'Unfollow'}
                         </button>
                       ) : (
                         <button
                           type="button"
-                          onClick={() => handleFollow(user.username)}
+                          onClick={() => handleFollow(user.username, user._id)}
+                          disabled={isLoading}
                           className="inline-flex items-center justify-center rounded-md text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:opacity-50 disabled:pointer-events-none ring-offset-background h-9 px-3 shadow hover:opacity-90"
                           style={{ borderColor: '#DBB996', color: '#DBB996', borderWidth: '1px' }}
                         >
                           <UserPlus className="w-4 h-4 mr-1" />
-                          Follow Back
+                          {isLoading ? 'Loading...' : 'Follow Back'}
                         </button>
                       )}
                     </div>

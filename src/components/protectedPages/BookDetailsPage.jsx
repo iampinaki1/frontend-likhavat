@@ -117,14 +117,25 @@ export function BookDetailPage() {
     }
   };
 
-  const handleToggleVisibility = () => {
-    updateBook(book._id || book.id, {
-      visibility: book.visibility === "public" ? "private" : "public",
-    });
+  const handleToggleVisibility = async () => {
+    const newVisibility = book.visibility === "public" ? "private" : "public";
+    
+    try {
+      await updateBook(book._id || book.id, {
+        visibility: newVisibility,
+      });
 
-    toast.success(
-      `Book is now ${book.visibility === "public" ? "private" : "public"}`
-    );
+      // Update local state immediately
+      setBook(prev => ({
+        ...prev,
+        visibility: newVisibility
+      }));
+
+      toast.success(`Book is now ${newVisibility}`);
+    } catch (err) {
+      console.error("Failed to update visibility:", err);
+      toast.error("Failed to update visibility");
+    }
   };
 
   const sortedChapters = [...(book.chapters || [])].sort(
@@ -184,11 +195,6 @@ export function BookDetailPage() {
                   {book.visibility === "public" ? "Make Private" : "Make Public"}
                 </button>
 
-                <button className="h-9 px-3 border rounded text-sm flex items-center gap-1">
-                  <Edit className="w-4 h-4" />
-                  Edit
-                </button>
-
                 <button
                   onClick={handleDelete}
                   className="h-9 px-3 bg-red-500 text-white rounded-md text-sm flex items-center gap-1"
@@ -241,11 +247,22 @@ export function BookDetailPage() {
                   Updated {format(chapter.updatedAt || new Date(), "MMM d, yyyy")}
                 </p>
 
-                <Link to={`/book/${bookId}/read/${chapter._id || chapter.id}`}>
-                  <button className="mt-2 bg-amber-500 text-white px-3 py-1 rounded">
-                    Read
-                  </button>
-                </Link>
+                <div className="flex gap-2 mt-2">
+                  <Link to={`/book/${bookId}/read/${chapter._id || chapter.id}`}>
+                    <button className="bg-amber-500 text-white px-3 py-1 rounded hover:bg-amber-600">
+                      Read
+                    </button>
+                  </Link>
+
+                  {canEdit && (
+                    <Link to={`/book/${bookId}/chapter/${chapter._id || chapter.id}/edit`}>
+                      <button className="bg-blue-500 text-white px-3 py-1 rounded hover:bg-blue-600 flex items-center gap-1">
+                        <Edit className="w-4 h-4" />
+                        Edit
+                      </button>
+                    </Link>
+                  )}
+                </div>
 
               </div>
             ))}

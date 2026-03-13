@@ -212,15 +212,15 @@ export function PoemsPage() {
             {/* Poem Content */}
             <div
               ref={contentRef}
-              className="flex overflow-x-auto snap-x snap-mandatory"
+              className="flex overflow-x-auto snap-x snap-mandatory flex-1"
               style={{
-                maxHeight: 'calc(85vh - 80px)', // adjusted for pagination and author section
+                maxHeight: 'calc(85vh - 120px)',
                 scrollbarWidth: 'none',
               }}
             >
               <style>{`.hide-scrollbar-local::-webkit-scrollbar { display: none; }`}</style>
               {poemPages.map((page, index) => (
-                <div key={index} className="min-w-full flex-shrink-0 snap-center p-5 sm:p-8 md:p-12 pb-4 overflow-y-hidden hide-scrollbar-local" style={{ scrollbarWidth: 'none' }}>
+                <div key={index} className="min-w-full flex-shrink-0 snap-center p-5 sm:p-8 md:p-12 pb-6 sm:pb-8 overflow-y-auto hide-scrollbar-local" style={{ scrollbarWidth: 'none' }}>
                   {index === 0 && (
                     <div className="mb-4 sm:mb-6">
                       <div className="inline-flex items-center rounded-full border px-2 sm:px-2.5 py-0.5 text-[10px] sm:text-xs font-semibold mb-2 sm:mb-3 border-transparent" style={{ backgroundColor: '#D4A574', color: '#FFFFFF' }}>
@@ -361,24 +361,24 @@ export function PoemsPage() {
           </button>
         </div>
 
-        {/* Navigation Arrows */}
+        {/* Navigation Arrows - Only on Large Devices, Right Side */}
         {currentIndex > 0 && (
           <button
             onClick={goToPrevious}
-            className="fixed top-[15%] sm:top-1/4 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-8 h-8 sm:w-10 sm:h-10 md:w-12 md:h-12 rounded-full shadow-lg flex items-center justify-center focus:outline-none hover:opacity-50 transition-opacity z-10"
+            className="fixed top-1/3 right-4 lg:right-8 w-10 h-10 lg:w-12 lg:h-12 rounded-full shadow-lg flex items-center justify-center focus:outline-none hover:opacity-50 transition-opacity z-10 hidden lg:flex"
             style={{ backgroundColor: '#FFF8ED', border: '2px solid #E5D4C1' }}
           >
-            <ChevronUp className="w-4 h-4 sm:w-5 sm:h-5 md:w-6 md:h-6" style={{ color: '#D4A574' }} />
+            <ChevronUp className="w-5 h-5 lg:w-6 lg:h-6" style={{ color: '#D4A574' }} />
           </button>
         )}
 
         {currentIndex < poems.length - 1 && (
           <button
             onClick={goToNext}
-            className="fixed bottom-[10%] sm:bottom-[15%] left-1/2 transform -translate-x-1/2 translate-y-1/2 w-8 h-8 sm:w-10 sm:h-10 md:w-12 md:h-12 rounded-full shadow-lg flex items-center justify-center focus:outline-none hover:opacity-50 transition-opacity z-10"
+            className="fixed bottom-1/3 right-4 lg:right-8 w-10 h-10 lg:w-12 lg:h-12 rounded-full shadow-lg flex items-center justify-center focus:outline-none hover:opacity-50 transition-opacity z-10 hidden lg:flex"
             style={{ backgroundColor: '#FFF8ED', border: '2px solid #E5D4C1' }}
           >
-            <ChevronDown className="w-4 h-4 sm:w-5 sm:h-5 md:w-6 md:h-6" style={{ color: '#D4A574' }} />
+            <ChevronDown className="w-5 h-5 lg:w-6 lg:h-6" style={{ color: '#D4A574' }} />
           </button>
         )}
 
@@ -392,8 +392,9 @@ export function PoemsPage() {
         {/* Scroll Hint (appears for first poem) */}
         {currentIndex === 0 && (
           <div className="fixed top-20 left-1/2 transform -translate-x-1/2 animate-bounce z-10">
-            <p className="text-sm font-medium px-4 py-2 rounded-full" style={{ backgroundColor: 'rgba(255, 248, 237, 0.8)', color: '#333333' }}>
-              Scroll or use arrow keys ↓↑
+            <p className="text-xs sm:text-sm font-medium px-3 sm:px-4 py-2 rounded-full" style={{ backgroundColor: 'rgba(255, 248, 237, 0.8)', color: '#333333' }}>
+              <span className="lg:hidden">Scroll ↓</span>
+              <span className="hidden lg:inline">Use arrows ↓↑</span>
             </p>
           </div>
         )}

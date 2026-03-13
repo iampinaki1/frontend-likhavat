@@ -3,7 +3,7 @@ import GlassCard from "../GlassCard";
 import { toast } from "sonner";
 import { Link, useNavigate } from 'react-router-dom';
 import { useApp } from "../../context/Appcontext.jsx";
-import { Eye, EyeOff } from 'lucide-react';
+import { Eye, EyeOff, Loader2 } from 'lucide-react';
 import { z } from 'zod';
 
 const signinSchema = z.object({
@@ -15,6 +15,7 @@ function Signin() {
   const [username_EMAIL, setUsername_Email] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
 
   const navigate = useNavigate();
   const { login } = useApp();
@@ -28,7 +29,10 @@ function Signin() {
       return;
     }
 
+    setIsLoading(true);
     const success = await login(username_EMAIL, password);
+    setIsLoading(false);
+    
     if (success) {
       toast.success("Logged in successfully");
       navigate("/");
@@ -82,10 +86,13 @@ function Signin() {
           <button
             className="border bg-blue-950 text-white rounded-2xl px-4 py-2 font-bold
              hover:bg-blue-800 hover:scale-105
-             transition duration-200 cursor-pointer"
+             transition duration-200 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed
+             flex items-center justify-center gap-2"
             type="submit"
+            disabled={isLoading}
           >
-            Login
+            {isLoading && <Loader2 className="w-4 h-4 animate-spin" />}
+            {isLoading ? 'Logging in...' : 'Login'}
           </button>
 
           <Link to="/signup"

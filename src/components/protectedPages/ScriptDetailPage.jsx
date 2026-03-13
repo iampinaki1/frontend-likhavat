@@ -314,14 +314,25 @@ export function ScriptDetailPage() {
 
   };
 
-  const handleToggleVisibility = () => {
-
-    updateScript(script._id || script.id,{
-      visibility: script.visibility === "public" ? "private":"public"
-    });
-
-    toast.success("Visibility updated");
-
+  const handleToggleVisibility = async () => {
+    const newVisibility = script.visibility === "public" ? "private" : "public";
+    
+    try {
+      await updateScript(script._id || script.id, {
+        visibility: newVisibility
+      });
+      
+      // Update local state immediately
+      setScript(prev => ({
+        ...prev,
+        visibility: newVisibility
+      }));
+      
+      toast.success(`Script is now ${newVisibility}`);
+    } catch (err) {
+      console.error("Failed to update visibility:", err);
+      toast.error("Failed to update visibility");
+    }
   };
 
   /* ---------------- UI ---------------- */
@@ -409,11 +420,6 @@ export function ScriptDetailPage() {
                 >
                   {script.visibility === "public" ? "Make Private":"Make Public"}
                 </button>
-
-                <button className="h-9 px-3 border rounded">
-                  <Edit className="w-4 h-4 inline mr-1"/>
-                  Edit
-                </button>
               </>
             )}
 
@@ -481,6 +487,19 @@ export function ScriptDetailPage() {
                 <div className="text-xs text-gray-500">
                   {version.edits?.length || 0} edits
                 </div>
+
+                {canEdit && (
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      navigate(`/script/${scriptId}/version/${id}/edit`);
+                    }}
+                    className="mt-2 w-full px-2 py-1 text-xs bg-blue-500 text-white rounded hover:bg-blue-600 flex items-center justify-center gap-1"
+                  >
+                    <Edit className="w-3 h-3" />
+                    Edit Version
+                  </button>
+                )}
 
               </button>
 

@@ -3,9 +3,11 @@ import GlassCard from '../GlassCard';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useApp } from '../../context/Appcontext.jsx';
 import { toast } from 'sonner';
+import { Loader2 } from 'lucide-react';
 
 function Verify() {
   const [code, setCode] = useState("");
+  const [isLoading, setIsLoading] = useState(false);
   const location = useLocation();
   const navigate = useNavigate();
   const { verifySignup } = useApp();
@@ -23,7 +25,10 @@ function Verify() {
       return;
     }
 
+    setIsLoading(true);
     const result = await verifySignup(tempUserId, Number(code));
+    setIsLoading(false);
+    
     if (result.success) {
       toast.success("Account verified successfully! Please set up your profile.");
       navigate('/setup-profile');
@@ -52,11 +57,14 @@ function Verify() {
         {/* Verify button */}
         <button
           onClick={handleVerify}
+          disabled={isLoading}
           className="w-full bg-blue-950 text-white py-2 rounded-xl font-bold
                  hover:bg-blue-800 hover:scale-[1.02]
-                 transition cursor-pointer"
+                 transition cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed
+                 flex items-center justify-center gap-2"
         >
-          Verify
+          {isLoading && <Loader2 className="w-4 h-4 animate-spin" />}
+          {isLoading ? 'Verifying...' : 'Verify'}
         </button>
 
         {/* Resend */}

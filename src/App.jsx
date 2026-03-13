@@ -24,6 +24,8 @@ import FollowPage from "./components/protectedPages/FollowPage.jsx";
 import ProfileMobile from "./components/protectedPages/ProfileMobile.jsx";
 import BookFullReader from "./components/protectedPages/BookFullReader.jsx";
 import ScriptFullReader from "./components/protectedPages/ScriptFullReader.jsx";
+import ScriptVersionEditPage from "./components/protectedPages/ScriptVersionEditPage.jsx";
+import ChapterEditPage from "./components/protectedPages/ChapterEditPage.jsx";
 import PoemsPage from "./components/protectedPages/PoemsPage.jsx";
 import CreatePoemPage from "./components/protectedPages/CreatePoemPage.jsx";
 import ProfileSetup from "./components/auth/ProfileSetup.jsx";
@@ -62,7 +64,9 @@ const router = createBrowserRouter([
           { path: "create/script", element: <CreateScriptPage /> },
           { path: "book/:bookId", element: <BookDetailPage /> },
           { path: "book/:bookId/read/:chapterId", element: <BookReaderPage /> },
+          { path: "book/:bookId/chapter/:chapterId/edit", element: <ChapterEditPage /> },
           { path: "script/:scriptId", element: <ScriptDetailPage /> },
+          { path: "script/:scriptId/version/:versionId/edit", element: <ScriptVersionEditPage /> },
           { path: "messages", element: <MessagesPage /> },
           { path: "follow", element: <FollowPage /> },
           { path: "profileMobile/:username", element: <ProfileMobile /> },

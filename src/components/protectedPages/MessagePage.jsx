@@ -301,7 +301,7 @@ export function MessagesPage() {
         setMessages((prev) => prev.filter((msg) => msg.id !== messageId));
         
         if (error.response?.status === 403) {
-          setShowError("You can only message users you are following");
+          setShowError("You don't have permission to send this message");
         } else {
           setShowError("Failed to send message. Please check your connection and try again.");
         }
@@ -503,7 +503,7 @@ export function MessagesPage() {
                           </button>
                         </div>
                         <p className="text-sm text-gray-500 mb-3">
-                          You can only message users you are following
+                          Select a user you follow to start a conversation
                         </p>
                         <div className="overflow-y-auto max-h-96 pr-4 space-y-3">
                           {followingUsers.length > 0 ? (
