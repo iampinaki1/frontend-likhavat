@@ -3,7 +3,6 @@ import { useParams, Link, useNavigate } from 'react-router-dom';
 import { useApp, api } from "../../context/Appcontext.jsx";
 import { BookOpen, Film, Users, Phone, Video, Feather, Heart, X, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
-import axios from 'axios';
 
 export function ProfilePage() {
   const { username } = useParams();
@@ -48,7 +47,7 @@ export function ProfilePage() {
     }
     const fetchProfileUser = async () => {
       try {
-        const res = await axios.get(`http://localhost:3000/api/user/profile/${username}`, { withCredentials: true });
+        const res = await api.get(`/user/profile/${username}`);
         if (res.data && res.data.user) {
           setProfileUser(res.data.user);
         }
