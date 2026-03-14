@@ -485,7 +485,17 @@ export function AppProvider({ children }) {
   const acceptFollowRequest = async (requestId) => {
     try {
       await api.post('/user/acceptRequest', { requestId });
+      // Find the request to get sender id
+      const req = followRequests.find(r => r._id === requestId);
       setFollowRequests(prev => prev.filter(r => r._id !== requestId));
+      // Update currentUser.followers so the accepted user shows up immediately
+      if (req?.sender) {
+        const senderId = req.sender._id || req.sender;
+        setCurrentUser(prev => ({
+          ...prev,
+          followers: [...(prev.followers || []), senderId]
+        }));
+      }
     } catch (err) {
       console.error(err);
     }

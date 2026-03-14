@@ -8,13 +8,6 @@ export default function TermsAndConditions() {
   return (
     <div className="min-h-screen bg-slate-950 text-gray-200 px-4 py-8 sm:px-6 lg:px-8">
       <div className="max-w-3xl mx-auto">
-        <button
-          onClick={() => navigate(-1)}
-          className="flex items-center gap-2 text-amber-400 hover:text-amber-300 transition-colors mb-6 text-sm font-medium"
-        >
-          <ArrowLeft className="w-4 h-4" />
-          Back
-        </button>
 
         <div className="bg-gray-900 rounded-xl p-6 sm:p-10 space-y-6 leading-relaxed">
           <div>

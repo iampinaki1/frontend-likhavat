@@ -47,6 +47,11 @@ export function MessagesPage() {
 
     socketRef.current.on("getOnlineUsers", (users) => {
       setOnlineUsers(users);
+      // Update isOnline in conversations list reactively
+      setConversations(prev => prev.map(c => ({
+        ...c,
+        isOnline: users.includes(c.userId?.toString())
+      })));
     });
 
     socketRef.current.on("receiveMessage", (data) => {
@@ -153,7 +158,7 @@ export function MessagesPage() {
           lastMessage: lastMessage?.message || "No messages yet",
           timestamp: lastMessage?.createdAt || new Date(),
           unread: 0,
-          isOnline: onlineUsers.includes(otherUser._id),
+          isOnline: onlineUsers.includes(otherUser._id.toString()),
         };
       });
       
@@ -211,11 +216,10 @@ export function MessagesPage() {
   useEffect(() => {
     if (conversations.length > 0 && !selectedConversation && !hasAutoSelected.current) {
       hasAutoSelected.current = true;
-      const firstConv = conversations[0];
-      setSelectedConversation(firstConv);
-      loadMessagesForConversation(firstConv);
+      // Just select the conversation, don't auto-load messages — user should click
+      setSelectedConversation(conversations[0]);
     }
-  }, [conversations, selectedConversation, loadMessagesForConversation]);
+  }, [conversations, selectedConversation]);
 
   // Smooth scroll to bottom
   useEffect(() => {
@@ -372,6 +376,7 @@ export function MessagesPage() {
   const handleSelectConversation = useCallback(
     (conversation) => {
       setSelectedConversation(conversation);
+      setMessages([]);
       loadMessagesForConversation(conversation);
     },
     [loadMessagesForConversation]

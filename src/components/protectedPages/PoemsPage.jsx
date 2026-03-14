@@ -1,20 +1,53 @@
 import React, { useState, useRef, useEffect, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
-import { useApp } from "../../context/Appcontext.jsx";
+import { useApp, api } from "../../context/Appcontext.jsx";
 import { Heart, User, ChevronUp, ChevronDown } from "lucide-react";
 import { toast } from "sonner";
 
 export function PoemsPage() {
 
-  const { poems, currentUser, toggleLike, followUser, users } = useApp();
+  const { currentUser, toggleLike, followUser, users } = useApp();
   const navigate = useNavigate();
 
+  const [poems, setPoems] = useState([]);
+  const [cursor, setCursor] = useState(null);
+  const [hasMore, setHasMore] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [currentIndex, setCurrentIndex] = useState(0);
 
   const containerRef = useRef(null);
   const contentRef = useRef(null);
-
   const isScrolling = useRef(false);
+
+  // Initial load
+  useEffect(() => {
+    const load = async () => {
+      try {
+        const { data } = await api.get('/poems/poem');
+        if (data.success) {
+          setPoems(data.poems);
+          setCursor(data.nextCursor);
+          setHasMore(!!data.nextCursor);
+        }
+      } catch (e) { console.error(e); }
+    };
+    load();
+  }, []);
+
+  // Load more when near end
+  const loadMore = useCallback(async () => {
+    if (!hasMore || loadingMore || !cursor) return;
+    setLoadingMore(true);
+    try {
+      const { data } = await api.get(`/poems/poem?lastId=${cursor}`);
+      if (data.success) {
+        setPoems(prev => [...prev, ...data.poems]);
+        setCursor(data.nextCursor);
+        setHasMore(!!data.nextCursor);
+      }
+    } catch (e) { console.error(e); }
+    finally { setLoadingMore(false); }
+  }, [hasMore, loadingMore, cursor]);
 
   const currentPoem = poems[currentIndex];
   const author = users.find((u) => u.id === currentPoem?.author);
@@ -43,21 +76,16 @@ export function PoemsPage() {
       : false;
 
   const goToNext = useCallback(() => {
-
     if (currentIndex < poems.length - 1) {
-
-      setCurrentIndex((prev) => prev + 1);
-
+      const next = currentIndex + 1;
+      setCurrentIndex(next);
+      // Load more when 3 from end
+      if (next >= poems.length - 3 && hasMore) loadMore();
       setTimeout(() => {
-        if (contentRef.current) {
-          contentRef.current.scrollTop = 0;
-          contentRef.current.scrollLeft = 0;
-        }
+        if (contentRef.current) { contentRef.current.scrollTop = 0; contentRef.current.scrollLeft = 0; }
       }, 50);
-
     }
-
-  }, [currentIndex, poems.length]);
+  }, [currentIndex, poems.length, hasMore, loadMore]);
 
   const goToPrevious = useCallback(() => {
 
