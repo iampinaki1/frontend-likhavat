@@ -483,7 +483,7 @@ export function MessagesPage() {
           <div
             className={`${
               selectedConversation ? "hidden" : "flex"
-            } w-full border-r flex-col flex-shrink-0 md:flex md:w-80 lg:w-96`}
+            } w-full border-r flex-col flex-shrink-0 lg:flex lg:w-80 xl:w-96`}
             style={{ backgroundColor: "#FFF8ED", borderColor: "#E5D4C1" }}
           >
             <div
@@ -678,7 +678,7 @@ export function MessagesPage() {
               >
                 <div className="flex items-center space-x-2 sm:space-x-3 min-w-0">
                   <button
-                    className="inline-flex items-center justify-center rounded-md text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none ring-offset-background hover:bg-gray-100 h-10 w-10 flex-shrink-0 md:hidden"
+                    className="inline-flex items-center justify-center rounded-md text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 ring-offset-background hover:bg-gray-100 h-10 w-10 flex-shrink-0 lg:hidden"
                     onClick={() => setSelectedConversation(null)}
                     title="Back to conversations"
                     style={{ color: "#D4A574" }}
@@ -932,7 +932,7 @@ export function MessagesPage() {
             </div>
           ) : (
             <div
-              className="hidden md:flex flex-1 items-center justify-center bg-gray-50"
+              className="hidden lg:flex flex-1 items-center justify-center bg-gray-50"
               style={{ backgroundColor: "#FFF8ED" }}
             >
               <div className="text-center text-gray-500">
