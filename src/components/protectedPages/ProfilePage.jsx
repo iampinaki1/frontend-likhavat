@@ -1,7 +1,7 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import { useApp, api } from "../../context/Appcontext.jsx";
-import { BookOpen, Film, Users, Phone, Video, Feather, Heart, X, Trash2 } from 'lucide-react';
+import { BookOpen, Film, Users, Phone, Video, Feather, Heart, X, Trash2, Loader2, User } from 'lucide-react';
 import { toast } from 'sonner';
 
 export function ProfilePage() {
@@ -13,6 +13,14 @@ export function ProfilePage() {
   const [activeTab, setActiveTab] = useState('books');
   const [profileUser, setProfileUser] = useState(null);
   const [followLoading, setFollowLoading] = useState(false);
+
+  // Modal paginated lists
+  const [modalList, setModalList] = useState([]);
+  const [modalCursor, setModalCursor] = useState(null);
+  const [modalHasMore, setModalHasMore] = useState(false);
+  const [modalLoading, setModalLoading] = useState(false);
+  const [modalType, setModalType] = useState(null); // 'followers' | 'following'
+  const modalLoaderRef = useRef(null);
   
   const [userBooks, setUserBooks] = useState([]);
   const [userScripts, setUserScripts] = useState([]);
@@ -167,6 +175,55 @@ export function ProfilePage() {
     }
   }, [activeTab, isOwnProfile]);
 
+  // Fetch paginated follow list for modal
+  const fetchModalPage = useCallback(async (type, cursor = null, username_) => {
+    if (!username_) return;
+    setModalLoading(true);
+    try {
+      const params = new URLSearchParams({ type });
+      if (cursor) params.set('lastId', cursor);
+      const { data } = await api.get(`/user/${username_}/followlist?${params}`);
+      if (!data.success) return;
+      setModalList(prev => cursor ? [...prev, ...data.users] : data.users);
+      setModalCursor(data.nextCursor);
+      setModalHasMore(!!data.nextCursor);
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setModalLoading(false);
+    }
+  }, []);
+
+  const openModal = (type) => {
+    setModalType(type);
+    setModalList([]);
+    setModalCursor(null);
+    setModalHasMore(false);
+    if (type === 'followers') setFollowersOpen(true);
+    else setFollowingOpen(true);
+    fetchModalPage(type, null, profileUser?.username);
+  };
+
+  const closeModal = () => {
+    setFollowersOpen(false);
+    setFollowingOpen(false);
+    setModalList([]);
+    setModalCursor(null);
+  };
+
+  // IntersectionObserver for modal infinite scroll
+  useEffect(() => {
+    const el = modalLoaderRef.current;
+    if (!el || !modalHasMore || modalLoading) return;
+    const observer = new IntersectionObserver(entries => {
+      if (entries[0].isIntersecting) {
+        fetchModalPage(modalType, modalCursor, profileUser?.username);
+      }
+    }, { threshold: 0.1 });
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [modalHasMore, modalLoading, modalCursor, modalType, profileUser?.username, fetchModalPage]);
+
   // Check if current user is following this profile user
   const isFollowing = currentUser?.following && profileUser?._id
     ? currentUser.following.some(fId => 
@@ -237,23 +294,6 @@ export function ProfilePage() {
     }
   };
 
-  // Populate follower and following user lists from the users array
-  const followerUsers = profileUser?.followers && (users || []).length > 0
-    ? (users || []).filter(u => 
-        profileUser.followers.some(fId => 
-          fId.toString ? fId.toString() === u._id.toString() : fId === u._id
-        )
-      )
-    : [];
-  
-  const followingUsers = profileUser?.following && (users || []).length > 0
-    ? (users || []).filter(u => 
-        profileUser.following.some(fId => 
-          fId.toString ? fId.toString() === u._id.toString() : fId === u._id
-        )
-      )
-    : [];
-
   return (
     <div className="max-w-5xl mx-auto space-y-6 relative">
       {/* Profile Header */}
@@ -283,10 +323,10 @@ export function ProfilePage() {
                 <div>
                   <span className="font-semibold">{userBooks.length + userScripts.length + userPoems.length}</span> Posts
                 </div>
-                <button onClick={() => setFollowersOpen(true)} className="hover:underline cursor-pointer focus:outline-none">
+                <button onClick={() => openModal('followers')} className="hover:underline cursor-pointer focus:outline-none">
                   <span className="font-semibold">{profileUser?.followers?.length || 0}</span> Followers
                 </button>
-                <button onClick={() => setFollowingOpen(true)} className="hover:underline cursor-pointer focus:outline-none">
+                <button onClick={() => openModal('following')} className="hover:underline cursor-pointer focus:outline-none">
                   <span className="font-semibold">{profileUser?.following?.length || 0}</span> Following
                 </button>
               </div>
@@ -346,105 +386,80 @@ export function ProfilePage() {
         </div>
       </div>
 
-      {/* Followers Modal */}
-      {
-        followersOpen && (
-          <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
-            <div className="bg-white rounded-xl shadow-lg w-full max-w-md overflow-hidden animate-in zoom-in-95 duration-200 flex flex-col max-h-[85vh]">
-              <div className="flex flex-col space-y-1.5 p-6 pb-4 relative">
-                <h2 className="text-lg font-semibold leading-none tracking-tight">Followers</h2>
-                <button
-                  onClick={() => setFollowersOpen(false)}
-                  className="absolute right-4 top-4 rounded-sm opacity-70 ring-offset-background transition-opacity hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:pointer-events-none"
-                >
-                  <X className="h-4 w-4" />
-                  <span className="sr-only">Close</span>
-                </button>
-              </div>
-              <div className="p-6 pt-0 flex-1 overflow-y-auto">
-                <div className="space-y-3">
-                  {followerUsers.length > 0 ? (
-                    followerUsers.map(user => (
-                      <Link
-                        key={user._id}
-                        to={`/profile/${user.username}`}
-                        onClick={() => setFollowersOpen(false)}
-                        className="flex items-center space-x-3 p-2 hover:bg-gray-100 rounded-lg"
-                      >
-                        <div className="relative flex h-10 w-10 shrink-0 overflow-hidden rounded-full border bg-gray-100">
-                          {user.profilePic ? (
-                            <img className="aspect-square h-full w-full object-cover" src={user.profilePic} alt={user.username} />
-                          ) : (
-                            <div className="flex h-full w-full items-center justify-center rounded-full bg-gray-100 text-gray-800 font-medium text-sm">
-                              {user.username.charAt(0).toUpperCase()}
-                            </div>
-                          )}
-                        </div>
-                        <div>
-                          <p className="font-semibold text-sm">{user.username}</p>
-                          {user.bio && <p className="text-xs text-gray-500">{user.bio}</p>}
-                        </div>
-                      </Link>
-                    ))
-                  ) : (
-                    <p className="text-center text-gray-500 py-4">No followers yet</p>
-                  )}
-                </div>
-              </div>
+      {/* Followers / Following Modal */}
+      {(followersOpen || followingOpen) && (
+        <div className="fixed inset-0 z-50 bg-black/50 flex items-end sm:items-center justify-center p-0 sm:p-4">
+          <div
+            className="bg-white w-full sm:rounded-xl sm:max-w-md shadow-xl flex flex-col"
+            style={{ maxHeight: '85vh', borderRadius: '16px 16px 0 0' }}
+          >
+            {/* Handle bar for mobile */}
+            <div className="flex justify-center pt-3 pb-1 sm:hidden">
+              <div className="w-10 h-1 rounded-full bg-gray-300" />
             </div>
-          </div>
-        )
-      }
 
-      {/* Following Modal */}
-      {
-        followingOpen && (
-          <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
-            <div className="bg-white rounded-xl shadow-lg w-full max-w-md overflow-hidden animate-in zoom-in-95 duration-200 flex flex-col max-h-[85vh]">
-              <div className="flex flex-col space-y-1.5 p-6 pb-4 relative">
-                <h2 className="text-lg font-semibold leading-none tracking-tight">Following</h2>
-                <button
-                  onClick={() => setFollowingOpen(false)}
-                  className="absolute right-4 top-4 rounded-sm opacity-70 ring-offset-background transition-opacity hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:pointer-events-none"
+            {/* Header */}
+            <div className="flex items-center justify-between px-5 py-4 border-b" style={{ borderColor: '#E5D4C1' }}>
+              <h2 className="text-base font-semibold">
+                {followersOpen ? 'Followers' : 'Following'}
+                <span className="ml-2 text-sm font-normal text-gray-400">
+                  {followersOpen ? profileUser?.followers?.length || 0 : profileUser?.following?.length || 0}
+                </span>
+              </h2>
+              <button onClick={closeModal} className="p-1 rounded-full hover:bg-gray-100 transition-colors">
+                <X className="h-5 w-5 text-gray-500" />
+              </button>
+            </div>
+
+            {/* List */}
+            <div className="flex-1 overflow-y-auto overscroll-contain px-3 py-2 space-y-1">
+              {modalList.map((user, i) => (
+                <Link
+                  key={user._id}
+                  to={`/profile/${user.username}`}
+                  onClick={closeModal}
+                  className="flex items-center gap-3 p-3 rounded-xl hover:bg-gray-50 active:bg-gray-100 transition-colors"
+                  style={{
+                    animation: `slideInModal 0.15s ease both`,
+                    animationDelay: `${Math.min(i * 20, 150)}ms`,
+                  }}
                 >
-                  <X className="h-4 w-4" />
-                  <span className="sr-only">Close</span>
-                </button>
+                  <div className="h-11 w-11 rounded-full overflow-hidden border-2 flex-shrink-0" style={{ borderColor: '#E5D4C1' }}>
+                    {user.profilePic ? (
+                      <img src={user.profilePic} alt={user.username} className="h-full w-full object-cover" />
+                    ) : (
+                      <div className="flex h-full w-full items-center justify-center bg-gray-100">
+                        <User className="h-5 w-5 text-gray-400" />
+                      </div>
+                    )}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="font-semibold text-sm truncate">{user.username}</p>
+                    {user.bio && <p className="text-xs text-gray-400 truncate">{user.bio}</p>}
+                  </div>
+                </Link>
+              ))}
+
+              {/* Infinite scroll sentinel */}
+              <div ref={modalLoaderRef} className="flex justify-center py-3">
+                {modalLoading && <Loader2 className="w-5 h-5 animate-spin text-gray-400" />}
               </div>
-              <div className="p-6 pt-0 flex-1 overflow-y-auto">
-                <div className="space-y-3">
-                  {followingUsers.length > 0 ? (
-                    followingUsers.map(user => (
-                      <Link
-                        key={user._id}
-                        to={`/profile/${user.username}`}
-                        onClick={() => setFollowingOpen(false)}
-                        className="flex items-center space-x-3 p-2 hover:bg-gray-100 rounded-lg"
-                      >
-                        <div className="relative flex h-10 w-10 shrink-0 overflow-hidden rounded-full border bg-gray-100">
-                          {user.profilePic ? (
-                            <img className="aspect-square h-full w-full object-cover" src={user.profilePic} alt={user.username} />
-                          ) : (
-                            <div className="flex h-full w-full items-center justify-center rounded-full bg-gray-100 text-gray-800 font-medium text-sm">
-                              {user.username.charAt(0).toUpperCase()}
-                            </div>
-                          )}
-                        </div>
-                        <div>
-                          <p className="font-semibold text-sm">{user.username}</p>
-                          {user.bio && <p className="text-xs text-gray-500">{user.bio}</p>}
-                        </div>
-                      </Link>
-                    ))
-                  ) : (
-                    <p className="text-center text-gray-500 py-4">Not following anyone yet</p>
-                  )}
-                </div>
-              </div>
+
+              {!modalLoading && modalList.length === 0 && (
+                <p className="text-center text-gray-400 text-sm py-8">
+                  {followersOpen ? 'No followers yet' : 'Not following anyone yet'}
+                </p>
+              )}
             </div>
           </div>
-        )
-      }
+          <style>{`
+            @keyframes slideInModal {
+              from { opacity: 0; transform: translateY(8px); }
+              to { opacity: 1; transform: translateY(0); }
+            }
+          `}</style>
+        </div>
+      )}
 
       {/* Content Tabs */}
       <div className="w-full">

@@ -29,7 +29,7 @@ export default function ProfileSetup() {
     const [selectedFile, setSelectedFile] = useState(null);
     const [isUploading, setIsUploading] = useState(false);
     const [bio, setBio] = useState(currentUser?.bio || '');
-    const [isPrivate, setIsPrivate] = useState(currentUser?.isPrivate ?? true);
+    const [isPrivate, setIsPrivate] = useState(currentUser?.isPrivate === true);
 
     const handleFinalSubmit = async () => {
         const formData = new FormData();
@@ -40,7 +40,7 @@ export default function ProfileSetup() {
         }
 
         const bioChanged = bio.trim() !== (currentUser?.bio || '');
-        const privacyChanged = isPrivate !== (currentUser?.isPrivate ?? true);
+        const privacyChanged = isPrivate !== (currentUser?.isPrivate === true);
 
         if (!selectedFile && !selectedAvatar && !bioChanged && !privacyChanged) {
             toast.error('Please make changes before saving.');
@@ -215,12 +215,12 @@ export default function ProfileSetup() {
                         <div className="space-y-3 pt-4 border-t border-gray-700/50">
                             <button
                                 type="button"
-                                className={`w-full py-2.5 rounded-xl font-bold transition-all duration-200 ${(!selectedAvatar && !uploadedImage && bio.trim() === (currentUser?.bio || '') && isPrivate === (currentUser?.isPrivate ?? true)) || isUploading
+                                className={`w-full py-2.5 rounded-xl font-bold transition-all duration-200 ${(!selectedAvatar && !uploadedImage && bio.trim() === (currentUser?.bio || '') && isPrivate === (currentUser?.isPrivate === true)) || isUploading
                                     ? 'bg-slate-700 text-gray-400 cursor-not-allowed'
                                     : 'bg-blue-600 hover:bg-blue-500 hover:shadow-lg text-white'
                                     }`}
                                 onClick={handleFinalSubmit}
-                                disabled={(!selectedAvatar && !uploadedImage && bio.trim() === (currentUser?.bio || '') && isPrivate === (currentUser?.isPrivate ?? true)) || isUploading}
+                                disabled={(!selectedAvatar && !uploadedImage && bio.trim() === (currentUser?.bio || '') && isPrivate === (currentUser?.isPrivate === true)) || isUploading}
                             >
                                 {isUploading ? 'Uploading...' : 'Finish Setup'}
                             </button>

@@ -1,12 +1,12 @@
 import React, { useState, useRef, useEffect, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { useApp, api } from "../../context/Appcontext.jsx";
-import { Heart, User, ChevronUp, ChevronDown, Loader2 } from "lucide-react";
+import { Heart, User, ChevronUp, ChevronDown, Loader2, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
 export function PoemsPage() {
 
-  const { currentUser, setCurrentUser, toggleLike, followUser, unfollowUser } = useApp();
+  const { currentUser, setCurrentUser, toggleLike, followUser, unfollowUser, deletePoem } = useApp();
   const navigate = useNavigate();
 
   const [poems, setPoems] = useState([]);
@@ -240,6 +240,19 @@ export function PoemsPage() {
     }
   };
 
+  const handleDelete = async () => {
+    if (!currentPoem) return;
+    const id = currentPoem._id || currentPoem.id;
+    try {
+      await deletePoem(id);
+      setPoems(prev => prev.filter(p => (p._id || p.id) !== id));
+      setCurrentIndex(prev => Math.max(0, prev - 1));
+      toast.success("Poem deleted");
+    } catch {
+      toast.error("Failed to delete poem");
+    }
+  };
+
   const handleProfileClick = () => {
     if (!currentPoem) return;
     navigate(`/profile/${currentPoem.author?.username || currentPoem.authorName}`);
@@ -428,6 +441,21 @@ export function PoemsPage() {
               {currentPoem.likes.length}
             </span>
           </button>
+
+          {/* Delete Button — only for poem author */}
+          {currentUser && currentUser._id === (currentPoem.author?._id || currentPoem.author) && (
+            <button
+              onClick={handleDelete}
+              className="flex flex-col items-center space-y-1 focus:outline-none group"
+            >
+              <div
+                className="w-10 h-10 sm:w-12 sm:h-12 md:w-14 md:h-14 rounded-full shadow-lg flex items-center justify-center transition-transform group-hover:scale-110"
+                style={{ backgroundColor: '#FFF8ED', border: '2px solid #E5D4C1' }}
+              >
+                <Trash2 className="w-5 h-5 sm:w-6 sm:h-6 md:w-7 md:h-7" style={{ color: '#ef4444' }} />
+              </div>
+            </button>
+          )}
 
           {/* Author Avatar (clickable) */}
           <button

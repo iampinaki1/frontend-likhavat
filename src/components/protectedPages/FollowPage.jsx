@@ -1,58 +1,135 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useApp, api } from "../../context/Appcontext.jsx";
-import { Search, UserPlus, UserMinus, Check, X, User } from 'lucide-react';
+import { Search, UserPlus, UserMinus, Check, X, User, Loader2 } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { toast } from 'sonner';
 
+// Reusable user card with slide-in animation
+function UserCard({ user, action, index }) {
+  return (
+    <div
+      className="rounded-xl border bg-white shadow-sm flex items-center gap-3 p-3 sm:p-4 transition-all duration-200 hover:shadow-md"
+      style={{
+        borderColor: '#E5D4C1',
+        animation: `slideIn 0.2s ease both`,
+        animationDelay: `${Math.min(index * 30, 200)}ms`,
+      }}
+    >
+      <Link to={`/profile/${user.username}`} className="flex-shrink-0">
+        <div className="h-12 w-12 rounded-full overflow-hidden border-2" style={{ borderColor: '#E5D4C1' }}>
+          {user.profilePic ? (
+            <img src={user.profilePic} alt={user.username} className="h-full w-full object-cover" />
+          ) : (
+            <div className="flex h-full w-full items-center justify-center bg-gray-100">
+              <User className="h-5 w-5 text-gray-400" />
+            </div>
+          )}
+        </div>
+      </Link>
+      <div className="flex-1 min-w-0">
+        <Link to={`/profile/${user.username}`} className="font-semibold text-sm hover:underline block truncate">
+          {user.username}
+        </Link>
+        <p className="text-xs text-gray-500 truncate">{user.bio || 'No bio'}</p>
+      </div>
+      <div className="flex-shrink-0">{action}</div>
+    </div>
+  );
+}
+
+const PAGE_SIZE = 10;
+
 export function FollowPage() {
-  const { currentUser, setCurrentUser, users, followRequests, acceptFollowRequest, rejectFollowRequest } = useApp();
+  const { currentUser, setCurrentUser, followRequests, acceptFollowRequest, rejectFollowRequest } = useApp();
   const [searchQuery, setSearchQuery] = useState('');
   const [activeTab, setActiveTab] = useState('suggestions');
   const [loadingState, setLoadingState] = useState({});
 
-  // Filter global users (exclude self)
-  const otherUsers = (Array.isArray(users) ? users : []).filter(u => u._id !== currentUser?._id);
+  // Per-tab paginated lists
+  const [suggestions, setSuggestions] = useState([]);
+  const [following, setFollowing] = useState([]);
+  const [followers, setFollowers] = useState([]);
 
-  const filteredUsers = otherUsers.filter((user) =>
-    user.username?.toLowerCase().includes(searchQuery.toLowerCase())
-  );
+  const [cursors, setCursors] = useState({ suggestions: null, following: null, followers: null });
+  const [hasMore, setHasMore] = useState({ suggestions: true, following: true, followers: true });
+  const [tabLoading, setTabLoading] = useState({ suggestions: false, following: false, followers: false });
+  const [initialized, setInitialized] = useState({ suggestions: false, following: false, followers: false });
 
-  // Derive categories automatically using actual IDs
-  const following = otherUsers.filter(u => currentUser?.following?.includes(u._id));
-  const followers = otherUsers.filter(u => currentUser?.followers?.includes(u._id));
+  const loaderRef = useRef(null);
 
-  // Suggestions: Everyone not currently followed
-  const suggestions = otherUsers.filter(u => !currentUser?.following?.includes(u._id));
-
-  // The request object has sender populated: { sender: { _id, username, profilePic }, status, _id as requestId }
-  const requests = followRequests || [];
-
-  const handleFollow = async (username, userId) => {
-    if (loadingState[userId]) return;
-    
-    setLoadingState(prev => ({ ...prev, [userId]: true }));
-    
+  // Fetch a page for a given tab
+  const fetchPage = useCallback(async (tab, cursor = null) => {
+    if (!currentUser?._id) return;
+    setTabLoading(prev => ({ ...prev, [tab]: true }));
     try {
-      const response = await api.post(`/user/${username}/followunfollow`);
-      
-      if (response.data?.status === "pending") {
-        // Private user - request sent
-        setCurrentUser(prev => ({
-          ...prev,
-          sentRequests: [...(prev.sentRequests || []), userId]
-        }));
-        toast.success("Follow request sent");
-      } else if (response.data.msg === "Followed") {
-        // Public user - followed successfully
-        setCurrentUser(prev => ({
-          ...prev,
-          following: [...(prev.following || []), userId]
-        }));
-        toast.success("Following user");
+      const params = new URLSearchParams({ tab });
+      if (cursor) params.set('lastId', cursor);
+      if (searchQuery) params.set('search', searchQuery);
+
+      const { data } = await api.get(`/user/all?${params}`);
+      if (!data.success) return;
+
+      const page = data.users || [];
+      const nextCursor = data.nextCursor || null;
+
+      if (tab === 'suggestions') setSuggestions(prev => cursor ? [...prev, ...page] : page);
+      if (tab === 'following') setFollowing(prev => cursor ? [...prev, ...page] : page);
+      if (tab === 'followers') setFollowers(prev => cursor ? [...prev, ...page] : page);
+
+      setCursors(prev => ({ ...prev, [tab]: nextCursor }));
+      setHasMore(prev => ({ ...prev, [tab]: !!nextCursor }));
+      setInitialized(prev => ({ ...prev, [tab]: true }));
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setTabLoading(prev => ({ ...prev, [tab]: false }));
+    }
+  }, [currentUser, searchQuery]);
+
+  // Load tab on switch
+  useEffect(() => {
+    if (!initialized[activeTab]) {
+      fetchPage(activeTab);
+    }
+  }, [activeTab, initialized, fetchPage]);
+
+  // Re-fetch when search changes (reset pagination)
+  useEffect(() => {
+    setInitialized({ suggestions: false, following: false, followers: false });
+    setSuggestions([]); setFollowing([]); setFollowers([]);
+    setCursors({ suggestions: null, following: null, followers: null });
+    setHasMore({ suggestions: true, following: true, followers: true });
+  }, [searchQuery]);
+
+  // IntersectionObserver for infinite scroll
+  useEffect(() => {
+    const el = loaderRef.current;
+    if (!el) return;
+    const observer = new IntersectionObserver(entries => {
+      if (entries[0].isIntersecting && hasMore[activeTab] && !tabLoading[activeTab]) {
+        fetchPage(activeTab, cursors[activeTab]);
+      }
+    }, { threshold: 0.1 });
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [activeTab, hasMore, tabLoading, cursors, fetchPage]);
+
+  const handleFollow = async (username, userId, isPrivate) => {
+    if (loadingState[userId]) return;
+    setLoadingState(prev => ({ ...prev, [userId]: true }));
+    try {
+      const { data } = await api.post(`/user/${username}/followunfollow`);
+      if (data?.status === 'pending') {
+        setCurrentUser(prev => ({ ...prev, sentRequests: [...(prev.sentRequests || []), userId] }));
+        toast.success('Follow request sent');
+      } else if (data.msg === 'Followed') {
+        setCurrentUser(prev => ({ ...prev, following: [...(prev.following || []), userId] }));
+        // Move from suggestions to following
+        setSuggestions(prev => prev.filter(u => u._id !== userId));
+        toast.success('Following');
       }
     } catch (err) {
-      console.error("Follow error:", err);
-      toast.error(err.response?.data?.msg || "Failed to follow");
+      toast.error(err.response?.data?.msg || 'Failed to follow');
     } finally {
       setLoadingState(prev => ({ ...prev, [userId]: false }));
     }
@@ -60,412 +137,227 @@ export function FollowPage() {
 
   const handleUnfollow = async (username, userId) => {
     if (loadingState[userId]) return;
-    
     setLoadingState(prev => ({ ...prev, [userId]: true }));
-    
     try {
-      const response = await api.post(`/user/${username}/followunfollow`);
-      
-      if (response.data.msg === "Unfollowed") {
+      const { data } = await api.post(`/user/${username}/followunfollow`);
+      if (data.msg === 'Unfollowed') {
         setCurrentUser(prev => ({
           ...prev,
-          following: (prev.following || []).filter(id => 
+          following: (prev.following || []).filter(id =>
             id.toString ? id.toString() !== userId.toString() : id !== userId
           )
         }));
-        toast.success("Unfollowed successfully");
+        setFollowing(prev => prev.filter(u => u._id !== userId));
+        toast.success('Unfollowed');
       }
     } catch (err) {
-      console.error("Unfollow error:", err);
-      toast.error("Failed to unfollow");
+      toast.error('Failed to unfollow');
     } finally {
       setLoadingState(prev => ({ ...prev, [userId]: false }));
     }
   };
 
-  const handleAcceptRequest = (requestId) => {
-    acceptFollowRequest(requestId);
+  const requests = followRequests || [];
+
+  const tabs = [
+    { key: 'suggestions', label: 'Suggestions', count: null },
+    { key: 'following', label: 'Following', count: currentUser?.following?.length || 0 },
+    { key: 'followers', label: 'Followers', count: currentUser?.followers?.length || 0 },
+    { key: 'requests', label: 'Requests', count: requests.length || null, badge: requests.length > 0 },
+  ];
+
+  // Get current tab's list (search is server-side now)
+  const getFilteredList = () => {
+    if (activeTab === 'suggestions') return suggestions;
+    if (activeTab === 'following') return following;
+    return followers;
   };
 
-  const handleRejectRequest = (requestId) => {
-    rejectFollowRequest(requestId);
+  const renderAction = (user, tab) => {
+    const isLoading = loadingState[user._id];
+    const isRequestSent = currentUser?.sentRequests?.some(id =>
+      id.toString ? id.toString() === user._id.toString() : id === user._id
+    );
+    const isUserFollowing = currentUser?.following?.some(id =>
+      id.toString ? id.toString() === user._id.toString() : id === user._id
+    );
+
+    if (isRequestSent) {
+      return (
+        <button disabled className="h-9 px-3 rounded-md text-sm bg-gray-100 text-gray-400 cursor-not-allowed">
+          Requested
+        </button>
+      );
+    }
+    if (tab === 'following' || isUserFollowing) {
+      return (
+        <button
+          onClick={() => handleUnfollow(user.username, user._id)}
+          disabled={isLoading}
+          className="h-9 px-3 rounded-md text-sm border border-gray-200 bg-white hover:bg-gray-50 flex items-center gap-1 disabled:opacity-50 active:scale-95 transition-transform"
+        >
+          {isLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <UserMinus className="w-4 h-4" />}
+          <span className="hidden sm:inline">{isLoading ? '...' : 'Unfollow'}</span>
+        </button>
+      );
+    }
+    return (
+      <button
+        onClick={() => handleFollow(user.username, user._id, user.isPrivate)}
+        disabled={isLoading}
+        className="h-9 px-3 rounded-md text-sm text-white flex items-center gap-1 disabled:opacity-50 active:scale-95 transition-transform hover:opacity-90"
+        style={{ backgroundColor: '#D4A574' }}
+      >
+        {isLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <UserPlus className="w-4 h-4" />}
+        <span className="hidden sm:inline">{isLoading ? '...' : (tab === 'followers' ? 'Follow Back' : (user.isPrivate ? 'Request' : 'Follow'))}</span>
+      </button>
+    );
   };
-
-
 
   return (
-    <div className="max-w-5xl mx-auto space-y-6 px-4">
-      {/* Search Header */}
-      <div className="rounded-xl border bg-white shadow-sm" style={{ borderColor: '#E5D4C1' }}>
-        <div className="flex flex-col space-y-1.5 p-6 pb-4">
-          <h3 className="text-2xl font-semibold leading-none tracking-tight">Manage Connections</h3>
-        </div>
-        <div className="p-6 pt-0">
+    <>
+      <style>{`
+        @keyframes slideIn {
+          from { opacity: 0; transform: translateY(12px); }
+          to { opacity: 1; transform: translateY(0); }
+        }
+      `}</style>
+
+      <div className="max-w-2xl mx-auto space-y-4 px-3 sm:px-4 pb-24">
+        {/* Header + Search */}
+        <div className="rounded-xl border bg-white shadow-sm p-4" style={{ borderColor: '#E5D4C1' }}>
+          <h3 className="text-xl font-semibold mb-3">Connections</h3>
           <div className="relative">
-            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400" />
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
             <input
-              placeholder="Search users..."
+              placeholder="Search..."
               value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="flex h-10 w-full rounded-md border border-gray-200 bg-white pl-10 pr-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-gray-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+              onChange={e => setSearchQuery(e.target.value)}
+              className="w-full h-10 rounded-lg border border-gray-200 bg-white pl-9 pr-3 text-sm focus:outline-none focus:ring-2 focus:ring-amber-300"
             />
           </div>
         </div>
-      </div>
 
-      <div className="w-full">
-        {/* Tabs List */}
-        <div className="grid w-full grid-cols-4 items-center justify-center rounded-md p-1 text-gray-500 bg-gray-100" style={{ backgroundColor: '#FFF8ED' }}>
-          <button
-            type="button"
-            onClick={() => setActiveTab('suggestions')}
-            className={`inline-flex items-center justify-center whitespace-nowrap rounded-sm px-3 py-1.5 text-sm font-medium ring-offset-background transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 ${activeTab === 'suggestions' ? 'bg-white text-gray-950 shadow-sm' : 'hover:bg-gray-100'}`}
-          >
-            Suggestions
-            <span className="ml-2 inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-semibold transition-colors focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 border-transparent bg-gray-100 text-gray-900">
-              {suggestions.length}
-            </span>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => setActiveTab('following')}
-            className={`inline-flex items-center justify-center whitespace-nowrap rounded-sm px-3 py-1.5 text-sm font-medium ring-offset-background transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 ${activeTab === 'following' ? 'bg-white text-gray-950 shadow-sm' : 'hover:bg-gray-100'}`}
-          >
-            Following
-            <span className="ml-2 inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-semibold transition-colors focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 border-transparent bg-gray-100 text-gray-900">
-              {following.length}
-            </span>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => setActiveTab('followers')}
-            className={`inline-flex items-center justify-center whitespace-nowrap rounded-sm px-3 py-1.5 text-sm font-medium ring-offset-background transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 ${activeTab === 'followers' ? 'bg-white text-gray-950 shadow-sm' : 'hover:bg-gray-100'}`}
-          >
-            Followers
-            <span className="ml-2 inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-semibold transition-colors focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 border-transparent bg-gray-100 text-gray-900">
-              {followers.length}
-            </span>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => setActiveTab('requests')}
-            className={`inline-flex items-center justify-center whitespace-nowrap rounded-sm px-3 py-1.5 text-sm font-medium ring-offset-background transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 ${activeTab === 'requests' ? 'bg-white text-gray-950 shadow-sm' : 'hover:bg-gray-100'}`}
-          >
-            Requests
-            {requests.length > 0 && (
-              <span className="ml-2 inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-semibold transition-colors focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 border-transparent bg-red-500 text-white">
-                {requests.length}
-              </span>
-            )}
-          </button>
+        {/* Tabs */}
+        <div className="grid grid-cols-4 gap-1 rounded-xl p-1" style={{ backgroundColor: '#FFF8ED', border: '1px solid #E5D4C1' }}>
+          {tabs.map(tab => (
+            <button
+              key={tab.key}
+              onClick={() => setActiveTab(tab.key)}
+              className={`relative flex flex-col items-center justify-center py-2 px-1 rounded-lg text-xs font-medium transition-all duration-150 ${
+                activeTab === tab.key ? 'bg-white shadow text-gray-900' : 'text-gray-500 hover:text-gray-700'
+              }`}
+            >
+              <span className="truncate">{tab.label}</span>
+              {tab.count !== null && (
+                <span
+                  className={`mt-0.5 text-[10px] font-bold px-1.5 py-0.5 rounded-full ${
+                    tab.badge ? 'bg-red-500 text-white' : 'bg-gray-100 text-gray-600'
+                  }`}
+                >
+                  {tab.count}
+                </span>
+              )}
+            </button>
+          ))}
         </div>
 
-        {/* Tab Contents */}
-        <div className="mt-4 ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2">
+        {/* Tab Content */}
+        <div className="space-y-2">
+          {/* Suggestions / Following / Followers */}
+          {activeTab !== 'requests' && (() => {
+            const list = getFilteredList();
+            const isLoading = tabLoading[activeTab];
 
-          {/* Suggestions Tab */}
-          {activeTab === 'suggestions' && (
-            <div className="space-y-4">
-              {searchQuery ? (
-                filteredUsers.length > 0 ? (
-                  <div className="space-y-3">
-                    {filteredUsers.map((user) => {
-                      const isRequestSent = currentUser?.sentRequests?.includes(user._id);
-                      const isUserFollowing = currentUser?.following?.includes(user._id);
-                      const isLoading = loadingState[user._id];
-                      
-                      return (
-                        <div key={user._id} className="rounded-xl border bg-white shadow-sm" style={{ borderColor: '#E5D4C1' }}>
-                          <div className="p-4 flex items-center space-x-4">
-                            <Link to={`/profile/${user.username}`}>
-                              <div className="relative flex-shrink-0 h-12 w-12 rounded-full overflow-hidden border" style={{ borderColor: '#E5D4C1' }}>
-                                {user.profilePic ? (
-                                  <img src={user.profilePic} alt={user.username} className="aspect-square h-full w-full object-cover" />
-                                ) : (
-                                  <div className="flex h-full w-full items-center justify-center bg-gray-100">
-                                    <User className="h-6 w-6 text-gray-400" />
-                                  </div>
-                                )}
-                              </div>
-                            </Link>
-                            <div className="flex-1">
-                              <Link to={`/profile/${user.username}`} className="font-semibold hover:underline">
-                                {user.username}
-                              </Link>
-                              <p className="text-sm text-gray-600 truncate">{user.bio || 'No bio'}</p>
-                            </div>
-                            {isRequestSent ? (
-                              <button
-                                type="button"
-                                disabled
-                                className="inline-flex items-center justify-center rounded-md text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:opacity-50 disabled:pointer-events-none ring-offset-background h-9 px-3 shadow bg-gray-200 text-gray-500"
-                              >
-                                Sent Request
-                              </button>
-                            ) : isUserFollowing ? (
-                              <button
-                                type="button"
-                                onClick={() => handleUnfollow(user.username, user._id)}
-                                disabled={isLoading}
-                                className="inline-flex items-center justify-center rounded-md text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:opacity-50 disabled:pointer-events-none ring-offset-background border border-gray-200 bg-white hover:bg-gray-100 hover:text-gray-900 h-9 px-3"
-                              >
-                                <UserMinus className="w-4 h-4 mr-1" />
-                                {isLoading ? 'Loading...' : 'Unfollow'}
-                              </button>
-                            ) : (
-                              <button
-                                type="button"
-                                onClick={() => handleFollow(user.username, user._id)}
-                                disabled={isLoading}
-                                className="inline-flex items-center justify-center rounded-md text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:opacity-50 disabled:pointer-events-none ring-offset-background h-9 px-3 shadow hover:opacity-90"
-                                style={{ backgroundColor: '#D4A574', color: '#FFFFFF' }}
-                              >
-                                <UserPlus className="w-4 h-4 mr-1" />
-                                {isLoading ? 'Loading...' : (user.isPrivate ? 'Request' : 'Follow')}
-                              </button>
-                            )}
-                          </div>
-                        </div>
-                      )
-                    })}
-                  </div>
-                ) : (
-                  <div className="rounded-xl border bg-white shadow-sm" style={{ borderColor: '#E5D4C1' }}>
-                    <div className="p-8 text-center text-gray-500">No users found</div>
-                  </div>
-                )
-              ) : (
-                <div className="space-y-3">
-                  {suggestions.map((user) => {
-                    const isRequestSent = currentUser?.sentRequests?.includes(user._id);
-                    const isUserFollowing = currentUser?.following?.includes(user._id);
-                    const isLoading = loadingState[user._id];
-                    
-                    return (
-                      <div key={user._id} className="rounded-xl border bg-white shadow-sm" style={{ borderColor: '#E5D4C1' }}>
-                        <div className="p-4 flex items-center space-x-4">
-                          <Link to={`/profile/${user.username}`}>
-                            <div className="relative flex-shrink-0 h-12 w-12 rounded-full overflow-hidden border" style={{ borderColor: '#E5D4C1' }}>
-                              {user.profilePic ? (
-                                <img src={user.profilePic} alt={user.username} className="aspect-square h-full w-full object-cover" />
-                              ) : (
-                                <div className="flex h-full w-full items-center justify-center bg-gray-100">
-                                  <User className="h-6 w-6 text-gray-400" />
-                                </div>
-                              )}
-                            </div>
-                          </Link>
-                          <div className="flex-1">
-                            <Link to={`/profile/${user.username}`} className="font-semibold hover:underline">
-                              {user.username}
-                            </Link>
-                            <p className="text-sm text-gray-600 truncate">{user.bio || 'No bio'}</p>
-                          </div>
-                          {isRequestSent ? (
-                            <button
-                              type="button"
-                              disabled
-                              className="inline-flex items-center justify-center rounded-md text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:opacity-50 disabled:pointer-events-none ring-offset-background h-9 px-3 shadow bg-gray-200 text-gray-500"
-                            >
-                              Sent Request
-                            </button>
-                          ) : isUserFollowing ? (
-                            <button
-                              type="button"
-                              onClick={() => handleUnfollow(user.username, user._id)}
-                              disabled={isLoading}
-                              className="inline-flex items-center justify-center rounded-md text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:opacity-50 disabled:pointer-events-none ring-offset-background border border-gray-200 bg-white hover:bg-gray-100 hover:text-gray-900 h-9 px-3"
-                            >
-                              <UserMinus className="w-4 h-4 mr-1" />
-                              {isLoading ? 'Loading...' : 'Unfollow'}
-                            </button>
-                          ) : (
-                            <button
-                              type="button"
-                              onClick={() => handleFollow(user.username, user._id)}
-                              disabled={isLoading}
-                              className="inline-flex items-center justify-center rounded-md text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:opacity-50 disabled:pointer-events-none ring-offset-background h-9 px-3 shadow hover:opacity-90"
-                              style={{ backgroundColor: '#D4A574', color: '#FFFFFF' }}
-                            >
-                              <UserPlus className="w-4 h-4 mr-1" />
-                              {isLoading ? 'Loading...' : (user.isPrivate ? 'Request' : 'Follow')}
-                            </button>
-                          )}
-                        </div>
-                      </div>
-                    )
-                  })}
+            if (isLoading && list.length === 0) {
+              return (
+                <div className="flex justify-center py-12">
+                  <Loader2 className="w-8 h-8 animate-spin" style={{ color: '#D4A574' }} />
                 </div>
-              )}
-            </div>
-          )}
+              );
+            }
 
-          {/* Following Tab */}
-          {activeTab === 'following' && (
-            <div className="space-y-3">
-              {following.map((user) => {
-                const isLoading = loadingState[user._id];
-                
-                return (
-                  <div key={user._id} className="rounded-xl border bg-white shadow-sm" style={{ borderColor: '#E5D4C1' }}>
-                    <div className="p-4 flex items-center space-x-4">
-                      <Link to={`/profile/${user.username}`}>
-                        <div className="relative flex-shrink-0 h-12 w-12 rounded-full overflow-hidden border" style={{ borderColor: '#E5D4C1' }}>
-                          {user.profilePic ? (
-                            <img src={user.profilePic} alt={user.username} className="aspect-square h-full w-full object-cover" />
-                          ) : (
-                            <div className="flex h-full w-full items-center justify-center bg-gray-100">
-                              <User className="h-6 w-6 text-gray-400" />
-                            </div>
-                          )}
-                        </div>
-                      </Link>
-                      <div className="flex-1">
-                        <Link to={`/profile/${user.username}`} className="font-semibold hover:underline">
-                          {user.username}
-                        </Link>
-                        <p className="text-sm text-gray-600 truncate">{user.bio || 'No bio'}</p>
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => handleUnfollow(user.username, user._id)}
-                        disabled={isLoading}
-                        className="inline-flex items-center justify-center rounded-md text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:opacity-50 disabled:pointer-events-none ring-offset-background border border-gray-200 bg-white hover:bg-gray-100 hover:text-gray-900 h-9 px-3"
-                      >
-                        <UserMinus className="w-4 h-4 mr-1" />
-                        {isLoading ? 'Loading...' : 'Unfollow'}
-                      </button>
-                    </div>
-                  </div>
-                )
-              })}
-            </div>
-          )}
+            if (!isLoading && list.length === 0) {
+              return (
+                <div className="rounded-xl border bg-white p-8 text-center text-gray-400 text-sm" style={{ borderColor: '#E5D4C1' }}>
+                  {activeTab === 'suggestions' ? 'No suggestions' : activeTab === 'following' ? "You're not following anyone" : 'No followers yet'}
+                </div>
+              );
+            }
 
-          {/* Followers Tab */}
-          {activeTab === 'followers' && (
-            <div className="space-y-3">
-              {followers.map((user) => {
-                const isRequestSent = currentUser?.sentRequests?.includes(user._id);
-                const isUserFollowing = currentUser?.following?.includes(user._id);
-                const isLoading = loadingState[user._id];
-                
-                return (
-                  <div key={user._id} className="rounded-xl border bg-white shadow-sm" style={{ borderColor: '#E5D4C1' }}>
-                    <div className="p-4 flex items-center space-x-4">
-                      <Link to={`/profile/${user.username}`}>
-                        <div className="relative flex-shrink-0 h-12 w-12 rounded-full overflow-hidden border" style={{ borderColor: '#E5D4C1' }}>
-                          {user.profilePic ? (
-                            <img src={user.profilePic} alt={user.username} className="aspect-square h-full w-full object-cover" />
-                          ) : (
-                            <div className="flex h-full w-full items-center justify-center bg-gray-100">
-                              <User className="h-6 w-6 text-gray-400" />
-                            </div>
-                          )}
-                        </div>
-                      </Link>
-                      <div className="flex-1">
-                        <Link to={`/profile/${user.username}`} className="font-semibold hover:underline">
-                          {user.username}
-                        </Link>
-                        <p className="text-sm text-gray-600 truncate">{user.bio || 'No bio'}</p>
-                      </div>
-                      {isRequestSent ? (
-                        <button
-                          type="button"
-                          disabled
-                          className="inline-flex items-center justify-center rounded-md text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:opacity-50 disabled:pointer-events-none ring-offset-background h-9 px-3 shadow bg-gray-200 text-gray-500"
-                        >
-                          Sent Request
-                        </button>
-                      ) : isUserFollowing ? (
-                        <button
-                          type="button"
-                          onClick={() => handleUnfollow(user.username, user._id)}
-                          disabled={isLoading}
-                          className="inline-flex items-center justify-center rounded-md text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:opacity-50 disabled:pointer-events-none ring-offset-background border border-gray-200 bg-white hover:bg-gray-100 hover:text-gray-900 h-9 px-3"
-                        >
-                          <UserMinus className="w-4 h-4 mr-1" />
-                          {isLoading ? 'Loading...' : 'Unfollow'}
-                        </button>
-                      ) : (
-                        <button
-                          type="button"
-                          onClick={() => handleFollow(user.username, user._id)}
-                          disabled={isLoading}
-                          className="inline-flex items-center justify-center rounded-md text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:opacity-50 disabled:pointer-events-none ring-offset-background h-9 px-3 shadow hover:opacity-90"
-                          style={{ borderColor: '#DBB996', color: '#DBB996', borderWidth: '1px' }}
-                        >
-                          <UserPlus className="w-4 h-4 mr-1" />
-                          {isLoading ? 'Loading...' : 'Follow Back'}
-                        </button>
-                      )}
-                    </div>
-                  </div>
-                )
-              })}
-            </div>
-          )}
+            return (
+              <>
+                {list.map((user, i) => (
+                  <UserCard
+                    key={user._id}
+                    user={user}
+                    index={i}
+                    action={renderAction(user, activeTab)}
+                  />
+                ))}
+                {/* Infinite scroll sentinel */}
+                <div ref={loaderRef} className="flex justify-center py-4">
+                  {isLoading && <Loader2 className="w-5 h-5 animate-spin text-gray-400" />}
+                </div>
+              </>
+            );
+          })()}
 
           {/* Requests Tab */}
           {activeTab === 'requests' && (
-            <div className="space-y-3">
-              {requests.length > 0 ? (
-                requests.map((request) => (
-                  <div key={request._id} className="rounded-xl border bg-white shadow-sm" style={{ borderColor: '#E5D4C1' }}>
-                    <div className="p-4 flex items-center space-x-4">
-                      <Link to={`/profile/${request.sender?.username}`}>
-                        <div className="relative flex-shrink-0 h-12 w-12 rounded-full overflow-hidden border" style={{ borderColor: '#E5D4C1' }}>
-                          {request.sender?.profilePic ? (
-                            <img src={request.sender.profilePic} alt={request.sender.username} className="aspect-square h-full w-full object-cover" />
-                          ) : (
-                            <div className="flex h-full w-full items-center justify-center bg-gray-100">
-                              <User className="h-6 w-6 text-gray-400" />
-                            </div>
-                          )}
-                        </div>
-                      </Link>
-                      <div className="flex-1">
-                        <Link to={`/profile/${request.sender?.username}`} className="font-semibold hover:underline">
-                          {request.sender?.username}
-                        </Link>
-                        <p className="text-sm text-gray-600 truncate">{request.sender?.bio || 'Sent you a follow request'}</p>
+            requests.length > 0 ? requests.map((request, i) => (
+              <div
+                key={request._id}
+                className="rounded-xl border bg-white shadow-sm flex items-center gap-3 p-3 sm:p-4"
+                style={{
+                  borderColor: '#E5D4C1',
+                  animation: `slideIn 0.2s ease both`,
+                  animationDelay: `${Math.min(i * 30, 200)}ms`,
+                }}
+              >
+                <Link to={`/profile/${request.sender?.username}`} className="flex-shrink-0">
+                  <div className="h-12 w-12 rounded-full overflow-hidden border-2" style={{ borderColor: '#E5D4C1' }}>
+                    {request.sender?.profilePic ? (
+                      <img src={request.sender.profilePic} alt={request.sender.username} className="h-full w-full object-cover" />
+                    ) : (
+                      <div className="flex h-full w-full items-center justify-center bg-gray-100">
+                        <User className="h-5 w-5 text-gray-400" />
                       </div>
-                      <div className="flex space-x-2">
-                        <button
-                          type="button"
-                          onClick={() => handleAcceptRequest(request._id)}
-                          className="inline-flex items-center justify-center rounded-md text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:opacity-50 disabled:pointer-events-none ring-offset-background h-9 px-3 shadow hover:opacity-90 bg-gray-900 text-gray-50 hover:bg-gray-900/90"
-                        >
-                          <Check className="w-4 h-4 mr-1" />
-                          Accept
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => handleRejectRequest(request._id)}
-                          className="inline-flex items-center justify-center rounded-md text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:opacity-50 disabled:pointer-events-none ring-offset-background border border-gray-200 bg-white hover:bg-gray-100 hover:text-gray-900 h-9 px-3"
-                        >
-                          <X className="w-4 h-4 mr-1" />
-                          Reject
-                        </button>
-                      </div>
-                    </div>
+                    )}
                   </div>
-                ))
-              ) : (
-                <div className="rounded-xl border bg-white shadow-sm" style={{ borderColor: '#E5D4C1' }}>
-                  <div className="p-8 text-center text-gray-500">No follow requests</div>
+                </Link>
+                <div className="flex-1 min-w-0">
+                  <Link to={`/profile/${request.sender?.username}`} className="font-semibold text-sm hover:underline block truncate">
+                    {request.sender?.username}
+                  </Link>
+                  <p className="text-xs text-gray-500 truncate">{request.sender?.bio || 'Sent you a follow request'}</p>
                 </div>
-              )}
-            </div>
+                <div className="flex gap-2 flex-shrink-0">
+                  <button
+                    onClick={() => acceptFollowRequest(request._id)}
+                    className="h-9 w-9 sm:w-auto sm:px-3 rounded-md text-sm bg-gray-900 text-white flex items-center justify-center gap-1 active:scale-95 transition-transform hover:bg-gray-700"
+                  >
+                    <Check className="w-4 h-4" />
+                    <span className="hidden sm:inline">Accept</span>
+                  </button>
+                  <button
+                    onClick={() => rejectFollowRequest(request._id)}
+                    className="h-9 w-9 sm:w-auto sm:px-3 rounded-md text-sm border border-gray-200 bg-white flex items-center justify-center gap-1 active:scale-95 transition-transform hover:bg-gray-50"
+                  >
+                    <X className="w-4 h-4" />
+                    <span className="hidden sm:inline">Reject</span>
+                  </button>
+                </div>
+              </div>
+            )) : (
+              <div className="rounded-xl border bg-white p-8 text-center text-gray-400 text-sm" style={{ borderColor: '#E5D4C1' }}>
+                No follow requests
+              </div>
+            )
           )}
-
         </div>
       </div>
-    </div>
+    </>
   );
 }
 
