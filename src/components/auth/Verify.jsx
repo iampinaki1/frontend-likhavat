@@ -1,13 +1,14 @@
 import React, { useState } from 'react';
 import GlassCard from '../GlassCard';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { useApp } from '../../context/Appcontext.jsx';
+import { useApp, api } from '../../context/Appcontext.jsx';
 import { toast } from 'sonner';
 import { Loader2 } from 'lucide-react';
 
 function Verify() {
   const [code, setCode] = useState("");
   const [isLoading, setIsLoading] = useState(false);
+  const [resendCooldown, setResendCooldown] = useState(0);
   const location = useLocation();
   const navigate = useNavigate();
   const { verifySignup } = useApp();
@@ -36,12 +37,29 @@ function Verify() {
       toast.error(result.error);
     }
   };
+
+  const handleResend = async () => {
+    if (resendCooldown > 0 || !tempUserId) return;
+
+    try {
+      await api.post('/user/resendSignupOtp', { tempUserId });
+      toast.success("New code sent to your email");
+      // 60s cooldown
+      setResendCooldown(60);
+      const interval = setInterval(() => {
+        setResendCooldown(prev => {
+          if (prev <= 1) { clearInterval(interval); return 0; }
+          return prev - 1;
+        });
+      }, 1000);
+    } catch (err) {
+      toast.error(err.response?.data?.msg || "Failed to resend code");
+    }
+  };
+
   return (
     <div className='h-screen flex justify-center items-center'>
       <GlassCard className=' text-black w-90 p-6 rounded-2xl shadow-xl flex flex-col items-center gap-5'>
-
-
-
         <h2 className="text-xl text-white select-none font-semibold">Verify Code</h2>
         <p className="text-sm text-gray-500 text-center">
           Enter the 4-digit code sent to your email
@@ -53,8 +71,6 @@ function Verify() {
           onChange={(e) => setCode(e.target.value.slice(0, 4))}
         />
 
-
-        {/* Verify button */}
         <button
           onClick={handleVerify}
           disabled={isLoading}
@@ -67,17 +83,16 @@ function Verify() {
           {isLoading ? 'Verifying...' : 'Verify'}
         </button>
 
-        {/* Resend */}
         <button
-          className="text-sm text-blue-500 hover:underline cursor-pointer"
+          onClick={handleResend}
+          disabled={resendCooldown > 0}
+          className="text-sm text-blue-500 hover:underline cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
         >
-          Resend code
+          {resendCooldown > 0 ? `Resend in ${resendCooldown}s` : 'Resend code'}
         </button>
-
-
-
       </GlassCard>
-    </div>)
+    </div>
+  );
 }
 
-export default Verify
+export default Verify;
