@@ -9,7 +9,7 @@ const SOCKET_URL = import.meta.env.VITE_SOCKET_URL || "http://localhost:3000";
 
 export function MessagesPage() {
 
-  const { currentUser, users } = useApp();
+  const { currentUser } = useApp();
   const socketRef = useRef(null);
 
   const [selectedConversation, setSelectedConversation] = useState(null);
@@ -25,6 +25,7 @@ export function MessagesPage() {
   const [pendingMessages, setPendingMessages] = useState(new Map());
   const [showError, setShowError] = useState(null);
   const [sendingMessage, setSendingMessage] = useState(false);
+  const [followingUsers, setFollowingUsers] = useState([]);
 
   const messagesEndRef = useRef(null);
   const typingTimeoutRef = useRef(null);
@@ -203,6 +204,28 @@ export function MessagesPage() {
     },
     [currentUser?._id]
   );
+
+  // Fetch following users when new chat dialog opens
+  useEffect(() => {
+    if (!newChatOpen || !currentUser?._id) return;
+    const loadFollowing = async () => {
+      try {
+        const { data } = await api.get('/user/all');
+        if (Array.isArray(data)) {
+          const filtered = data.filter(u =>
+            u._id !== currentUser._id &&
+            currentUser?.following?.some(fId =>
+              fId.toString ? fId.toString() === u._id.toString() : fId === u._id
+            )
+          );
+          setFollowingUsers(filtered);
+        }
+      } catch (err) {
+        console.error(err);
+      }
+    };
+    loadFollowing();
+  }, [newChatOpen, currentUser?._id]);
 
   // Auto-fetch conversations on mount
   useEffect(() => {
@@ -417,13 +440,6 @@ export function MessagesPage() {
       </div>
     );
   }
-
-  // Filter users to only show following
-  const followingUsers = users.filter(
-    (u) => u._id !== currentUser._id && currentUser?.following?.some(fId => 
-      fId.toString ? fId.toString() === u._id.toString() : fId === u._id
-    )
-  );
 
   return (
     <div className="container mx-auto p-0 sm:p-4">

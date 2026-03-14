@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { useParams, Link, useNavigate } from "react-router-dom";
 import { useApp, api } from "../../context/Appcontext.jsx";
-import { MessageCircle, BookOpen, Trash2, Edit, Eye, EyeOff, Maximize2, Loader2, Book, BookHeart, BookOpenCheck } from "lucide-react";
+import { MessageCircle, BookOpen, Trash2, Edit, Eye, EyeOff, Maximize2, Loader2, Book, BookHeart, BookOpenCheck, Plus, X } from "lucide-react";
 import { format } from "date-fns";
 import { toast } from "sonner";
 
@@ -15,6 +15,9 @@ export function BookDetailPage() {
   const [commentText, setCommentText] = useState("");
   const [activeTab, setActiveTab] = useState("chapters");
   const [commentCursor, setCommentCursor] = useState(null);
+  const [showAddChapter, setShowAddChapter] = useState(false);
+  const [newChapter, setNewChapter] = useState({ title: "", content: "" });
+  const [addingChapter, setAddingChapter] = useState(false);
 
   const navigate = useNavigate();
 
@@ -142,6 +145,34 @@ export function BookDetailPage() {
     (a, b) => a.chapterNumber - b.chapterNumber
   );
 
+  const handleAddChapter = async () => {
+    if (!newChapter.title.trim() || !newChapter.content.trim()) {
+      toast.error("Title and content are required");
+      return;
+    }
+    setAddingChapter(true);
+    try {
+      const nextNumber = sortedChapters.length + 1;
+      const { data } = await api.post('/books/chapter', {
+        title: newChapter.title,
+        content: newChapter.content,
+        chapterNumber: nextNumber,
+        bookId: book._id || book.id,
+      });
+      setBook(prev => ({
+        ...prev,
+        chapters: [...(prev.chapters || []), data],
+      }));
+      setNewChapter({ title: "", content: "" });
+      setShowAddChapter(false);
+      toast.success("Chapter added!");
+    } catch (err) {
+      toast.error("Failed to add chapter");
+    } finally {
+      setAddingChapter(false);
+    }
+  };
+
   return (
     <div className="max-w-6xl mx-auto space-y-6">
 
@@ -231,6 +262,64 @@ export function BookDetailPage() {
 
         {activeTab === "chapters" && (
           <div className="space-y-4 mt-4">
+
+            {canEdit && (
+              <button
+                onClick={() => setShowAddChapter(true)}
+                className="flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium text-white"
+                style={{ backgroundColor: '#D4A574' }}
+              >
+                <Plus className="w-4 h-4" />
+                Add Chapter
+              </button>
+            )}
+
+            {/* Add Chapter Modal */}
+            {showAddChapter && (
+              <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
+                <div className="bg-white rounded-xl shadow-lg w-full max-w-lg p-6">
+                  <div className="flex items-center justify-between mb-4">
+                    <h2 className="text-lg font-semibold">Add New Chapter</h2>
+                    <button onClick={() => setShowAddChapter(false)}>
+                      <X className="w-5 h-5 text-gray-500" />
+                    </button>
+                  </div>
+                  <input
+                    placeholder="Chapter title"
+                    value={newChapter.title}
+                    onChange={e => setNewChapter(p => ({ ...p, title: e.target.value }))}
+                    className="w-full border rounded-md px-3 py-2 text-sm mb-3 focus:outline-none focus:ring-2"
+                    style={{ borderColor: '#E5D4C1' }}
+                  />
+                  <textarea
+                    placeholder="Chapter content..."
+                    value={newChapter.content}
+                    onChange={e => setNewChapter(p => ({ ...p, content: e.target.value }))}
+                    rows={8}
+                    className="w-full border rounded-md px-3 py-2 text-sm mb-4 focus:outline-none focus:ring-2 resize-none"
+                    style={{ borderColor: '#E5D4C1' }}
+                  />
+                  <div className="flex justify-end gap-2">
+                    <button
+                      onClick={() => setShowAddChapter(false)}
+                      className="px-4 py-2 rounded-md text-sm border"
+                      style={{ borderColor: '#E5D4C1' }}
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      onClick={handleAddChapter}
+                      disabled={addingChapter}
+                      className="px-4 py-2 rounded-md text-sm text-white flex items-center gap-2 disabled:opacity-50"
+                      style={{ backgroundColor: '#D4A574' }}
+                    >
+                      {addingChapter && <Loader2 className="w-4 h-4 animate-spin" />}
+                      Save Chapter
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
 
             {sortedChapters.map((chapter) => (
               <div

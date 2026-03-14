@@ -106,6 +106,13 @@ export function PoemsPage() {
 
   }, [currentIndex]);
 
+  // Prevent pull-to-refresh and browser overscroll while on this page
+  useEffect(() => {
+    const prev = document.body.style.overscrollBehavior;
+    document.body.style.overscrollBehavior = "none";
+    return () => { document.body.style.overscrollBehavior = prev; };
+  }, []);
+
   // Touch scroll for mobile
   useEffect(() => {
     const container = containerRef.current;
@@ -286,7 +293,7 @@ export function PoemsPage() {
     <div
       ref={containerRef}
       className="fixed inset-0 overflow-hidden"
-      style={{ top: "64px" }}
+      style={{ top: "64px", overscrollBehavior: "none", touchAction: "none" }}
     >
 
       {/* Poem Container */}
