@@ -21,6 +21,7 @@ export function ProfilePage() {
   const [modalLoading, setModalLoading] = useState(false);
   const [modalType, setModalType] = useState(null); // 'followers' | 'following'
   const modalLoaderRef = useRef(null);
+  const modalTargetUsernameRef = useRef(null);
   
   const [userBooks, setUserBooks] = useState([]);
   const [userScripts, setUserScripts] = useState([]);
@@ -176,32 +177,35 @@ export function ProfilePage() {
   }, [activeTab, isOwnProfile]);
 
   // Fetch paginated follow list for modal
-  const fetchModalPage = useCallback(async (type, cursor = null, username_) => {
-    if (!username_) return;
+  const fetchModalPage = useCallback(async (type, cursor, targetUsername) => {
+    if (!targetUsername) return;
     setModalLoading(true);
     try {
       const params = new URLSearchParams({ type });
       if (cursor) params.set('lastId', cursor);
-      const { data } = await api.get(`/user/${username_}/followlist?${params}`);
+      const { data } = await api.get(`/user/${targetUsername}/followlist?${params}`);
       if (!data.success) return;
       setModalList(prev => cursor ? [...prev, ...data.users] : data.users);
       setModalCursor(data.nextCursor);
       setModalHasMore(!!data.nextCursor);
     } catch (err) {
-      console.error(err);
+      console.error('fetchModalPage error:', err);
     } finally {
       setModalLoading(false);
     }
   }, []);
 
   const openModal = (type) => {
+    const targetUsername = profileUser?.username;
+    if (!targetUsername) return;
+    modalTargetUsernameRef.current = targetUsername;
     setModalType(type);
     setModalList([]);
     setModalCursor(null);
     setModalHasMore(false);
     if (type === 'followers') setFollowersOpen(true);
     else setFollowingOpen(true);
-    fetchModalPage(type, null, profileUser?.username);
+    fetchModalPage(type, null, targetUsername);
   };
 
   const closeModal = () => {
@@ -217,12 +221,12 @@ export function ProfilePage() {
     if (!el || !modalHasMore || modalLoading) return;
     const observer = new IntersectionObserver(entries => {
       if (entries[0].isIntersecting) {
-        fetchModalPage(modalType, modalCursor, profileUser?.username);
+        fetchModalPage(modalType, modalCursor, modalTargetUsernameRef.current);
       }
     }, { threshold: 0.1 });
     observer.observe(el);
     return () => observer.disconnect();
-  }, [modalHasMore, modalLoading, modalCursor, modalType, profileUser?.username, fetchModalPage]);
+  }, [modalHasMore, modalLoading, modalCursor, modalType, fetchModalPage]);
 
   // Check if current user is following this profile user
   const isFollowing = currentUser?.following && profileUser?._id

@@ -4,14 +4,13 @@ import { Search, UserPlus, UserMinus, Check, X, User, Loader2 } from 'lucide-rea
 import { Link } from 'react-router-dom';
 import { toast } from 'sonner';
 
-// Reusable user card with slide-in animation
 function UserCard({ user, action, index }) {
   return (
     <div
       className="rounded-xl border bg-white shadow-sm flex items-center gap-3 p-3 sm:p-4 transition-all duration-200 hover:shadow-md"
       style={{
         borderColor: '#E5D4C1',
-        animation: `slideIn 0.2s ease both`,
+        animation: 'slideIn 0.2s ease both',
         animationDelay: `${Math.min(index * 30, 200)}ms`,
       }}
     >
@@ -37,34 +36,32 @@ function UserCard({ user, action, index }) {
   );
 }
 
-const PAGE_SIZE = 10;
-
 export function FollowPage() {
   const { currentUser, setCurrentUser, followRequests, acceptFollowRequest, rejectFollowRequest } = useApp();
   const [searchQuery, setSearchQuery] = useState('');
   const [activeTab, setActiveTab] = useState('suggestions');
   const [loadingState, setLoadingState] = useState({});
 
-  // Per-tab paginated lists
-  const [suggestions, setSuggestions] = useState([]);
-  const [following, setFollowing] = useState([]);
-  const [followers, setFollowers] = useState([]);
-
+  const [lists, setLists] = useState({ suggestions: [], following: [], followers: [] });
   const [cursors, setCursors] = useState({ suggestions: null, following: null, followers: null });
   const [hasMore, setHasMore] = useState({ suggestions: true, following: true, followers: true });
   const [tabLoading, setTabLoading] = useState({ suggestions: false, following: false, followers: false });
-  const [initialized, setInitialized] = useState({ suggestions: false, following: false, followers: false });
 
+  // version bump resets everything when search or user changes
+  const [fetchVersion, setFetchVersion] = useState(0);
   const loaderRef = useRef(null);
+  // track which (tab, version) combos have been fetched
+  const fetchedRef = useRef({});
+  const currentUserIdRef = useRef(currentUser?._id);
 
-  // Fetch a page for a given tab
-  const fetchPage = useCallback(async (tab, cursor = null) => {
-    if (!currentUser?._id) return;
+  const fetchPage = useCallback(async (tab, cursor, search) => {
+    const uid = currentUserIdRef.current;
+    if (!uid) return;
     setTabLoading(prev => ({ ...prev, [tab]: true }));
     try {
       const params = new URLSearchParams({ tab });
       if (cursor) params.set('lastId', cursor);
-      if (searchQuery) params.set('search', searchQuery);
+      if (search) params.set('search', search);
 
       const { data } = await api.get(`/user/all?${params}`);
       if (!data.success) return;
@@ -72,47 +69,73 @@ export function FollowPage() {
       const page = data.users || [];
       const nextCursor = data.nextCursor || null;
 
-      if (tab === 'suggestions') setSuggestions(prev => cursor ? [...prev, ...page] : page);
-      if (tab === 'following') setFollowing(prev => cursor ? [...prev, ...page] : page);
-      if (tab === 'followers') setFollowers(prev => cursor ? [...prev, ...page] : page);
-
+      setLists(prev => ({ ...prev, [tab]: cursor ? [...prev[tab], ...page] : page }));
       setCursors(prev => ({ ...prev, [tab]: nextCursor }));
       setHasMore(prev => ({ ...prev, [tab]: !!nextCursor }));
-      setInitialized(prev => ({ ...prev, [tab]: true }));
     } catch (err) {
-      console.error(err);
+      console.error('fetchPage error:', err);
     } finally {
       setTabLoading(prev => ({ ...prev, [tab]: false }));
     }
-  }, [currentUser, searchQuery]);
+  }, []); // stable — reads currentUserIdRef directly
 
-  // Load tab on switch
+  // Keep currentUserIdRef in sync; bump fetchVersion when user loads
   useEffect(() => {
-    if (!initialized[activeTab]) {
-      fetchPage(activeTab);
+    if (currentUser?._id && currentUser._id !== currentUserIdRef.current) {
+      currentUserIdRef.current = currentUser._id;
+      fetchedRef.current = {};
+      setLists({ suggestions: [], following: [], followers: [] });
+      setCursors({ suggestions: null, following: null, followers: null });
+      setHasMore({ suggestions: true, following: true, followers: true });
+      setFetchVersion(v => v + 1);
     }
-  }, [activeTab, initialized, fetchPage]);
+  }, [currentUser?._id]);
 
-  // Re-fetch when search changes (reset pagination)
+  // Reset all lists when search changes
   useEffect(() => {
-    setInitialized({ suggestions: false, following: false, followers: false });
-    setSuggestions([]); setFollowing([]); setFollowers([]);
+    fetchedRef.current = {};
+    setLists({ suggestions: [], following: [], followers: [] });
     setCursors({ suggestions: null, following: null, followers: null });
     setHasMore({ suggestions: true, following: true, followers: true });
+    setFetchVersion(v => v + 1);
   }, [searchQuery]);
 
-  // IntersectionObserver for infinite scroll
+  // Fetch first page when tab becomes active (or version resets)
+  useEffect(() => {
+    if (!currentUserIdRef.current) return;
+    const key = `${activeTab}-${fetchVersion}`;
+    if (fetchedRef.current[key]) return;
+    fetchedRef.current[key] = true;
+    fetchPage(activeTab, null, searchQuery);
+  }, [activeTab, fetchVersion, fetchPage, searchQuery]);
+
+  // IntersectionObserver for infinite scroll — uses refs to avoid stale closures
+  const activeTabRef = useRef(activeTab);
+  const cursorsRef = useRef(cursors);
+  const hasMoreRef = useRef(hasMore);
+  const tabLoadingRef = useRef(tabLoading);
+  const searchQueryRef = useRef(searchQuery);
+  const fetchVersionRef = useRef(fetchVersion);
+
+  useEffect(() => { activeTabRef.current = activeTab; }, [activeTab]);
+  useEffect(() => { cursorsRef.current = cursors; }, [cursors]);
+  useEffect(() => { hasMoreRef.current = hasMore; }, [hasMore]);
+  useEffect(() => { tabLoadingRef.current = tabLoading; }, [tabLoading]);
+  useEffect(() => { searchQueryRef.current = searchQuery; }, [searchQuery]);
+  useEffect(() => { fetchVersionRef.current = fetchVersion; }, [fetchVersion]);
+
   useEffect(() => {
     const el = loaderRef.current;
     if (!el) return;
     const observer = new IntersectionObserver(entries => {
-      if (entries[0].isIntersecting && hasMore[activeTab] && !tabLoading[activeTab]) {
-        fetchPage(activeTab, cursors[activeTab]);
-      }
+      if (!entries[0].isIntersecting) return;
+      const tab = activeTabRef.current;
+      if (!hasMoreRef.current[tab] || tabLoadingRef.current[tab]) return;
+      fetchPage(tab, cursorsRef.current[tab], searchQueryRef.current);
     }, { threshold: 0.1 });
     observer.observe(el);
     return () => observer.disconnect();
-  }, [activeTab, hasMore, tabLoading, cursors, fetchPage]);
+  }, [fetchPage]);
 
   const handleFollow = async (username, userId, isPrivate) => {
     if (loadingState[userId]) return;
@@ -124,8 +147,7 @@ export function FollowPage() {
         toast.success('Follow request sent');
       } else if (data.msg === 'Followed') {
         setCurrentUser(prev => ({ ...prev, following: [...(prev.following || []), userId] }));
-        // Move from suggestions to following
-        setSuggestions(prev => prev.filter(u => u._id !== userId));
+        setLists(prev => ({ ...prev, suggestions: prev.suggestions.filter(u => u._id !== userId) }));
         toast.success('Following');
       }
     } catch (err) {
@@ -147,7 +169,7 @@ export function FollowPage() {
             id.toString ? id.toString() !== userId.toString() : id !== userId
           )
         }));
-        setFollowing(prev => prev.filter(u => u._id !== userId));
+        setLists(prev => ({ ...prev, following: prev.following.filter(u => u._id !== userId) }));
         toast.success('Unfollowed');
       }
     } catch (err) {
@@ -165,13 +187,6 @@ export function FollowPage() {
     { key: 'followers', label: 'Followers', count: currentUser?.followers?.length || 0 },
     { key: 'requests', label: 'Requests', count: requests.length || null, badge: requests.length > 0 },
   ];
-
-  // Get current tab's list (search is server-side now)
-  const getFilteredList = () => {
-    if (activeTab === 'suggestions') return suggestions;
-    if (activeTab === 'following') return following;
-    return followers;
-  };
 
   const renderAction = (user, tab) => {
     const isLoading = loadingState[user._id];
@@ -209,7 +224,9 @@ export function FollowPage() {
         style={{ backgroundColor: '#D4A574' }}
       >
         {isLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <UserPlus className="w-4 h-4" />}
-        <span className="hidden sm:inline">{isLoading ? '...' : (tab === 'followers' ? 'Follow Back' : (user.isPrivate ? 'Request' : 'Follow'))}</span>
+        <span className="hidden sm:inline">
+          {isLoading ? '...' : (tab === 'followers' ? 'Follow Back' : (user.isPrivate ? 'Request' : 'Follow'))}
+        </span>
       </button>
     );
   };
@@ -250,11 +267,9 @@ export function FollowPage() {
             >
               <span className="truncate">{tab.label}</span>
               {tab.count !== null && (
-                <span
-                  className={`mt-0.5 text-[10px] font-bold px-1.5 py-0.5 rounded-full ${
-                    tab.badge ? 'bg-red-500 text-white' : 'bg-gray-100 text-gray-600'
-                  }`}
-                >
+                <span className={`mt-0.5 text-[10px] font-bold px-1.5 py-0.5 rounded-full ${
+                  tab.badge ? 'bg-red-500 text-white' : 'bg-gray-100 text-gray-600'
+                }`}>
                   {tab.count}
                 </span>
               )}
@@ -264,9 +279,8 @@ export function FollowPage() {
 
         {/* Tab Content */}
         <div className="space-y-2">
-          {/* Suggestions / Following / Followers */}
           {activeTab !== 'requests' && (() => {
-            const list = getFilteredList();
+            const list = lists[activeTab];
             const isLoading = tabLoading[activeTab];
 
             if (isLoading && list.length === 0) {
@@ -288,14 +302,8 @@ export function FollowPage() {
             return (
               <>
                 {list.map((user, i) => (
-                  <UserCard
-                    key={user._id}
-                    user={user}
-                    index={i}
-                    action={renderAction(user, activeTab)}
-                  />
+                  <UserCard key={user._id} user={user} index={i} action={renderAction(user, activeTab)} />
                 ))}
-                {/* Infinite scroll sentinel */}
                 <div ref={loaderRef} className="flex justify-center py-4">
                   {isLoading && <Loader2 className="w-5 h-5 animate-spin text-gray-400" />}
                 </div>
@@ -303,17 +311,12 @@ export function FollowPage() {
             );
           })()}
 
-          {/* Requests Tab */}
           {activeTab === 'requests' && (
             requests.length > 0 ? requests.map((request, i) => (
               <div
                 key={request._id}
                 className="rounded-xl border bg-white shadow-sm flex items-center gap-3 p-3 sm:p-4"
-                style={{
-                  borderColor: '#E5D4C1',
-                  animation: `slideIn 0.2s ease both`,
-                  animationDelay: `${Math.min(i * 30, 200)}ms`,
-                }}
+                style={{ borderColor: '#E5D4C1', animation: 'slideIn 0.2s ease both', animationDelay: `${Math.min(i * 30, 200)}ms` }}
               >
                 <Link to={`/profile/${request.sender?.username}`} className="flex-shrink-0">
                   <div className="h-12 w-12 rounded-full overflow-hidden border-2" style={{ borderColor: '#E5D4C1' }}>
