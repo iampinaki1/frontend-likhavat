@@ -40,7 +40,13 @@ function Signup() {
 
     const validation = signupSchema.safeParse({ username, email, password, confirmPassword, termsAccepted });
     if (!validation.success) {
-      toast.error(validation.error.errors[0].message);
+      // flattenedErrors gives all messages in a flat array regardless of path
+      const flat = validation.error.flatten();
+      const allMsgs = [
+        ...Object.values(flat.fieldErrors).flat(),
+        ...flat.formErrors,
+      ];
+      toast.error(allMsgs[0] || "Please check your inputs");
       return;
     }
 
