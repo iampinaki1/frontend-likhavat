@@ -504,7 +504,7 @@ export function ProfilePage() {
                     <button
                       onClick={loadMoreBooks}
                       disabled={loadingMore}
-                      className="px-6 py-2 rounded-lg border border-gray-300 hover:bg-gray-50 transition-colors disabled:opacity-50"
+                      className="px-6 py-2 rounded-lg border border-gray-300 bg-white hover:bg-gray-50 text-gray-700 transition-colors disabled:opacity-50"
                     >
                       {loadingMore ? 'Loading...' : 'Load More'}
                     </button>
@@ -549,7 +549,7 @@ export function ProfilePage() {
                     <button
                       onClick={loadMoreScripts}
                       disabled={loadingMore}
-                      className="px-6 py-2 rounded-lg border border-gray-300 hover:bg-gray-50 transition-colors disabled:opacity-50"
+                      className="px-6 py-2 rounded-lg border border-gray-300 bg-white hover:bg-gray-50 text-gray-700 transition-colors disabled:opacity-50"
                     >
                       {loadingMore ? 'Loading...' : 'Load More'}
                     </button>
