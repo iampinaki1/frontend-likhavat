@@ -36,7 +36,13 @@ api.interceptors.response.use(
     }
 
     if (error.response?.status >= 500) {
-      window.location.href = '/error';
+      // Don't redirect on auth routes — let the component handle the error
+      const url = originalRequest.url || '';
+      const isAuthRoute = url.includes('/user/signup') || url.includes('/user/signin') ||
+        url.includes('/user/verify') || url.includes('/user/profile/password');
+      if (!isAuthRoute) {
+        window.location.href = '/error';
+      }
     }
 
     return Promise.reject(error);
@@ -174,7 +180,11 @@ export function AppProvider({ children }) {
   const signup = async (username, password, email) => {
     try {
       const { data } = await api.post('/user/signup', { username, email, password, termAndCondition: true });
-      return { success: true, tempUserId: data.tempUserId };
+      if (data?.tempUserId) {
+        return { success: true, tempUserId: data.tempUserId };
+      }
+      // Backend returned 200 but with an error message (e.g. "userid already taken")
+      return { success: false, error: data?.msg || 'Signup failed' };
     } catch (err) {
       return { success: false, error: err.response?.data?.msg || 'Signup failed' };
     }
@@ -223,13 +233,17 @@ export function AppProvider({ children }) {
       const { data } = await api.post('/user/profile/add', formData, {
         headers: { 'Content-Type': 'multipart/form-data' },
       });
-      // Update all changed fields in currentUser
+
+      const bioValue = formData.get('bio');
+      const isPrivateValue = formData.get('isPrivate');
+
       setCurrentUser(prev => ({
         ...prev,
         ...(data.profilePic ? { profilePic: data.profilePic } : {}),
-        ...(formData.get?.('bio') !== null ? { bio: formData.get('bio') } : {}),
-        ...(formData.get?.('isPrivate') !== null ? { isPrivate: formData.get('isPrivate') === 'true' } : {}),
+        ...(bioValue !== null ? { bio: bioValue } : {}),
+        ...(isPrivateValue !== null ? { isPrivate: isPrivateValue === 'true' } : {}),
       }));
+
       if (data.profilePic) {
         setUsers(prev => prev.map(u =>
           u.username === currentUser?.username ? { ...u, profilePic: data.profilePic } : u
