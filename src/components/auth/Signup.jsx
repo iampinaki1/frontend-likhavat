@@ -70,6 +70,7 @@ function Signup() {
             onChange={(e) => setEmail(e.target.value)}
             required
             placeholder="EMAIL ID"
+            autoComplete="email"
           />
 
           <input
@@ -82,6 +83,7 @@ function Signup() {
             value={username}
             onChange={(e) => setUsername(e.target.value)}
             placeholder="USERNAME"
+            autoComplete="username"
           />
 
           <div className="relative w-full flex justify-center">
@@ -95,6 +97,7 @@ function Signup() {
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               placeholder="PASSWORD"
+              autoComplete="new-password"
             />
             <button
               type="button"
@@ -116,6 +119,7 @@ function Signup() {
               value={confirmPassword}
               onChange={(e) => setConfirmPassword(e.target.value)}
               placeholder="CONFIRM PASSWORD"
+              autoComplete="new-password"
             />
             <button
               type="button"

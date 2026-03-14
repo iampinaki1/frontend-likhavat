@@ -59,6 +59,7 @@ function ForgotPassword() {
                         required
                         type="email"
                         placeholder="Account Email"
+                        autoComplete="email"
                     />
 
                     <input
@@ -69,6 +70,7 @@ function ForgotPassword() {
                         placeholder="New Password"
                         onChange={(e) => setNewPassword(e.target.value)}
                         required
+                        autoComplete="new-password"
                     />
 
                     <input
@@ -79,6 +81,7 @@ function ForgotPassword() {
                         placeholder="Confirm New Password"
                         onChange={(e) => setConfirmPassword(e.target.value)}
                         required
+                        autoComplete="new-password"
                     />
 
                     <button
