@@ -9,8 +9,8 @@ import { z } from 'zod';
 const signupSchema = z.object({
   username: z.string().min(3, "Username must be at least 3 characters"),
   email: z.string().email("Invalid email format"),
-  password: z.string().min(6, "Password must be at least 6 characters"),
-  confirmPassword: z.string().min(6, "Confirm password must be at least 6 characters"),
+  password: z.string().min(8, "Password must be at least 8 characters"),
+  confirmPassword: z.string(),
   termsAccepted: z.boolean().refine((val) => val === true, {
     message: "Terms and conditions must be accepted",
   }),
@@ -18,6 +18,9 @@ const signupSchema = z.object({
   message: "Passwords do not match",
   path: ["confirmPassword"],
 });
+
+const isStrongPassword = (pwd) =>
+  /[A-Z]/.test(pwd) && /[0-9]/.test(pwd) && /[^A-Za-z0-9]/.test(pwd);
 
 function Signup() {
   const [email, setEmail] = useState('');
@@ -38,6 +41,11 @@ function Signup() {
     const validation = signupSchema.safeParse({ username, email, password, confirmPassword, termsAccepted });
     if (!validation.success) {
       toast.error(validation.error.errors[0].message);
+      return;
+    }
+
+    if (!isStrongPassword(password)) {
+      toast.warning("Use a strong password: mix uppercase, numbers & symbols");
       return;
     }
 
@@ -83,7 +91,7 @@ function Signup() {
             value={username}
             onChange={(e) => setUsername(e.target.value)}
             placeholder="USERNAME"
-            autoComplete="username"
+            autoComplete="off"
           />
 
           <div className="relative w-full flex justify-center">
@@ -95,7 +103,12 @@ function Signup() {
               type={showPassword ? "text" : "password"}
               required
               value={password}
-              onChange={(e) => setPassword(e.target.value)}
+              onChange={(e) => {
+                setPassword(e.target.value);
+                if (e.target.value.length >= 8 && !isStrongPassword(e.target.value)) {
+                  toast.warning("Use a strong password: add uppercase, numbers & symbols", { id: "pwd-strength" });
+                }
+              }}
               placeholder="PASSWORD"
               autoComplete="new-password"
             />

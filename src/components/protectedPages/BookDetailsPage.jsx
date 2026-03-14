@@ -79,8 +79,17 @@ export function BookDetailPage() {
   const canEdit = isAuthor;
 
   const handleLike = () => {
-    toggleLike(book._id || book.id, "book");
-    toast.success(isLiked ? "Removed from favorites" : "Added to favorites");
+    if (!currentUser) return;
+    const uid = currentUser._id || currentUser.id;
+    const id = book._id || book.id;
+    const liked = (book.likes || []).includes(uid);
+    // Optimistic local update
+    setBook(prev => ({
+      ...prev,
+      likes: liked ? prev.likes.filter(x => x !== uid) : [...(prev.likes || []), uid]
+    }));
+    toggleLike(id, "book");
+    toast.success(liked ? "Unliked" : "Liked!");
   };
 
   const handleBookmark = () => {
