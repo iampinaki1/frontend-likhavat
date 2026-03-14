@@ -29,6 +29,7 @@ import ChapterEditPage from "./components/protectedPages/ChapterEditPage.jsx";
 import PoemsPage from "./components/protectedPages/PoemsPage.jsx";
 import CreatePoemPage from "./components/protectedPages/CreatePoemPage.jsx";
 import ProfileSetup from "./components/auth/ProfileSetup.jsx";
+import TermsAndConditions from "./components/auth/TermsAndConditions.jsx";
 import RootLayout from "./layout/RootLayout.jsx";
 function ProtectedRoute({ children }) {
   const { isAuthenticated, loading } = useApp();
@@ -151,6 +152,7 @@ const router = createBrowserRouter([
         ),
       },
       { path: "error", element: <ErrorPage /> },
+      { path: "terms", element: <TermsAndConditions /> },
       { path: "*", element: <ErrorPage /> },
     ],
   },

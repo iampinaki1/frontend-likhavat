@@ -129,7 +129,9 @@ function Signup() {
               {showConfirmPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
             </button>
           </div>
-          <div className='flex select-none justify-between'><h6>Agree to T&C</h6><input className='  border rounded-full w-5 h-5 accent-blue-500'
+          <div className='flex select-none justify-between'>
+            <h6>Agree to <Link to="/terms" target="_blank" className="text-blue-400 hover:underline">T&C</Link></h6>
+            <input className='border rounded-full w-5 h-5 accent-blue-500'
             type="checkbox"
             required
             checked={termsAccepted}

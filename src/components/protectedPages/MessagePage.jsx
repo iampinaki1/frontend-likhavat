@@ -29,6 +29,7 @@ export function MessagesPage() {
   const messagesEndRef = useRef(null);
   const typingTimeoutRef = useRef(null);
   const hasInitialized = useRef(false);
+  const hasAutoSelected = useRef(false);
   const messageContainerRef = useRef(null);
   const pendingMessageIdRef = useRef(null);
 
@@ -49,20 +50,44 @@ export function MessagesPage() {
     });
 
     socketRef.current.on("receiveMessage", (data) => {
-      if (selectedConversation && selectedConversation.userId === data.senderId) {
-        setMessages((prev) => [
-          ...prev,
-          {
+      // Always update conversation list so new chats appear
+      setConversations(prev => {
+        const exists = prev.find(c => c.userId === data.senderId || c.userId?.toString() === data.senderId?.toString());
+        if (exists) {
+          return prev.map(c =>
+            (c.userId === data.senderId || c.userId?.toString() === data.senderId?.toString())
+              ? { ...c, lastMessage: data.message, timestamp: new Date(data.timestamp) }
+              : c
+          );
+        }
+        // New conversation from someone — add it to the list
+        return [{
+          id: data.senderId,
+          userId: data.senderId,
+          username: data.senderUsername || "Unknown",
+          profilePic: data.senderProfilePic || null,
+          lastMessage: data.message,
+          timestamp: new Date(data.timestamp),
+          unread: 1,
+          isOnline: true,
+        }, ...prev];
+      });
+
+      // Only append to messages if this conversation is currently open
+      setSelectedConversation(current => {
+        if (current && (current.userId === data.senderId || current.userId?.toString() === data.senderId?.toString())) {
+          setMessages(prev => [...prev, {
             id: Date.now().toString(),
             senderId: data.senderId,
-            senderName: selectedConversation.username,
+            senderName: current.username,
             content: data.message,
             timestamp: new Date(data.timestamp),
             isOwn: false,
             read: true,
-          },
-        ]);
-      }
+          }]);
+        }
+        return current; // don't change selectedConversation
+      });
     });
 
     // Listen for message delivery confirmation
@@ -82,17 +107,19 @@ export function MessagesPage() {
       );
     });
 
-    // Listen for message send error
+    // Listen for message send error (receiver offline — message still saved in DB)
     socketRef.current.on("messageSendError", (data) => {
-      setShowError(data.error || "Failed to send message. Please try again.");
       pendingMessageIdRef.current = null;
       setPendingMessages((prev) => {
         const updated = new Map(prev);
         updated.delete(data.messageId);
         return updated;
       });
+      // Message is already saved in DB via REST API — just mark it as sent, not delivered
       setMessages((prev) =>
-        prev.filter((msg) => msg.id !== data.messageId)
+        prev.map((msg) =>
+          msg.id === data.messageId ? { ...msg, isPending: false, read: false } : msg
+        )
       );
       setSendingMessage(false);
     });
@@ -180,9 +207,10 @@ export function MessagesPage() {
     }
   }, [currentUser?._id, fetchConversations]);
 
-  // Auto-select first conversation
+  // Auto-select first conversation only on initial load, not after user navigates back
   useEffect(() => {
-    if (conversations.length > 0 && !selectedConversation) {
+    if (conversations.length > 0 && !selectedConversation && !hasAutoSelected.current) {
+      hasAutoSelected.current = true;
       const firstConv = conversations[0];
       setSelectedConversation(firstConv);
       loadMessagesForConversation(firstConv);
