@@ -1,23 +1,25 @@
 import React, { useState, useRef, useEffect, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { useApp, api } from "../../context/Appcontext.jsx";
-import { Heart, User, ChevronUp, ChevronDown } from "lucide-react";
+import { Heart, User, ChevronUp, ChevronDown, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 
 export function PoemsPage() {
 
-  const { currentUser, toggleLike, followUser, users } = useApp();
+  const { currentUser, setCurrentUser, toggleLike, followUser, unfollowUser } = useApp();
   const navigate = useNavigate();
 
   const [poems, setPoems] = useState([]);
   const [cursor, setCursor] = useState(null);
   const [hasMore, setHasMore] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [currentIndex, setCurrentIndex] = useState(0);
 
   const containerRef = useRef(null);
   const contentRef = useRef(null);
   const isScrolling = useRef(false);
+  const touchStartY = useRef(null);
 
   // Initial load
   useEffect(() => {
@@ -30,6 +32,7 @@ export function PoemsPage() {
           setHasMore(!!data.nextCursor);
         }
       } catch (e) { console.error(e); }
+      finally { setLoading(false); }
     };
     load();
   }, []);
@@ -50,7 +53,6 @@ export function PoemsPage() {
   }, [hasMore, loadingMore, cursor]);
 
   const currentPoem = poems[currentIndex];
-  const author = users.find((u) => u.id === currentPoem?.author);
 
   const poemPages = React.useMemo(() => {
     if (!currentPoem) return [];
@@ -103,6 +105,34 @@ export function PoemsPage() {
     }
 
   }, [currentIndex]);
+
+  // Touch scroll for mobile
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container) return;
+
+    const handleTouchStart = (e) => {
+      touchStartY.current = e.touches[0].clientY;
+    };
+
+    const handleTouchEnd = (e) => {
+      if (touchStartY.current === null) return;
+      const delta = touchStartY.current - e.changedTouches[0].clientY;
+      if (Math.abs(delta) > 50) {
+        if (delta > 0) goToNext();
+        else goToPrevious();
+      }
+      touchStartY.current = null;
+    };
+
+    container.addEventListener("touchstart", handleTouchStart, { passive: true });
+    container.addEventListener("touchend", handleTouchEnd, { passive: true });
+
+    return () => {
+      container.removeEventListener("touchstart", handleTouchStart);
+      container.removeEventListener("touchend", handleTouchEnd);
+    };
+  }, [goToNext, goToPrevious]);
 
   useEffect(() => {
 
@@ -166,24 +196,58 @@ export function PoemsPage() {
 
   const handleLike = () => {
     if (!currentPoem || !currentUser) return;
-    toggleLike(currentPoem._id || currentPoem.id, "poem");
+    const uid = currentUser._id || currentUser.id;
+    const id = currentPoem._id || currentPoem.id;
+    // Optimistic local update
+    setPoems(prev => prev.map(p => {
+      if ((p._id || p.id) !== id) return p;
+      const liked = (p.likes || []).includes(uid);
+      return { ...p, likes: liked ? p.likes.filter(x => x !== uid) : [...p.likes, uid] };
+    }));
+    toggleLike(id, "poem");
     toast.success(isLiked ? "Removed like" : "Poem liked!");
   };
 
-  const handleFollow = () => {
+  const handleFollow = async () => {
     if (!currentPoem || !currentUser) return;
-    followUser(currentPoem.author?._id || currentPoem.author);
-    toast.success(
-      isFollowing
-        ? `Unfollowed ${currentPoem.author?.username || currentPoem.authorName}`
-        : `Following ${currentPoem.author?.username || currentPoem.authorName}`
-    );
+    const authorId = currentPoem.author?._id || currentPoem.author;
+    const authorUsername = currentPoem.author?.username || currentPoem.authorName;
+    try {
+      const { data } = await api.post(`/user/${authorUsername}/followunfollow`);
+      if (data.msg === "Followed") {
+        followUser(authorId);
+        toast.success(`Following ${authorUsername}`);
+      } else if (data.msg === "Unfollowed") {
+        unfollowUser(authorId);
+        toast.success(`Unfollowed ${authorUsername}`);
+      } else if (data.status === "pending") {
+        // private user — add to sentRequests
+        setCurrentUser(prev => ({
+          ...prev,
+          sentRequests: [...(prev.sentRequests || []), authorId]
+        }));
+        toast.success("Follow request sent");
+      }
+    } catch (err) {
+      toast.error("Failed to update follow");
+    }
   };
 
   const handleProfileClick = () => {
     if (!currentPoem) return;
     navigate(`/profile/${currentPoem.author?.username || currentPoem.authorName}`);
   };
+
+  if (loading) {
+    return (
+      <div className="fixed inset-0 flex items-center justify-center" style={{ top: "64px", backgroundColor: "#FFF8ED" }}>
+        <div className="flex flex-col items-center space-y-4">
+          <Loader2 className="w-10 h-10 animate-spin" style={{ color: '#D4A574' }} />
+          <p className="text-sm font-medium" style={{ color: '#333333' }}>Loading poems...</p>
+        </div>
+      </div>
+    );
+  }
 
   if (!currentPoem) {
 
@@ -389,11 +453,11 @@ export function PoemsPage() {
           </button>
         </div>
 
-        {/* Navigation Arrows - Only on Large Devices, Right Side */}
+        {/* Navigation Arrows - Only on Large Devices, Left Side */}
         {currentIndex > 0 && (
           <button
             onClick={goToPrevious}
-            className="fixed top-1/3 right-4 lg:right-8 w-10 h-10 lg:w-12 lg:h-12 rounded-full shadow-lg flex items-center justify-center focus:outline-none hover:opacity-50 transition-opacity z-10 hidden lg:flex"
+            className="fixed top-1/3 left-4 lg:left-8 w-10 h-10 lg:w-12 lg:h-12 rounded-full shadow-lg flex items-center justify-center focus:outline-none hover:opacity-50 transition-opacity z-10 hidden lg:flex"
             style={{ backgroundColor: '#FFF8ED', border: '2px solid #E5D4C1' }}
           >
             <ChevronUp className="w-5 h-5 lg:w-6 lg:h-6" style={{ color: '#D4A574' }} />
@@ -403,7 +467,7 @@ export function PoemsPage() {
         {currentIndex < poems.length - 1 && (
           <button
             onClick={goToNext}
-            className="fixed bottom-1/3 right-4 lg:right-8 w-10 h-10 lg:w-12 lg:h-12 rounded-full shadow-lg flex items-center justify-center focus:outline-none hover:opacity-50 transition-opacity z-10 hidden lg:flex"
+            className="fixed bottom-1/3 left-4 lg:left-8 w-10 h-10 lg:w-12 lg:h-12 rounded-full shadow-lg flex items-center justify-center focus:outline-none hover:opacity-50 transition-opacity z-10 hidden lg:flex"
             style={{ backgroundColor: '#FFF8ED', border: '2px solid #E5D4C1' }}
           >
             <ChevronDown className="w-5 h-5 lg:w-6 lg:h-6" style={{ color: '#D4A574' }} />

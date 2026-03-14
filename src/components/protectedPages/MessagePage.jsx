@@ -212,14 +212,8 @@ export function MessagesPage() {
     }
   }, [currentUser?._id, fetchConversations]);
 
-  // Auto-select first conversation only on initial load, not after user navigates back
-  useEffect(() => {
-    if (conversations.length > 0 && !selectedConversation && !hasAutoSelected.current) {
-      hasAutoSelected.current = true;
-      // Just select the conversation, don't auto-load messages — user should click
-      setSelectedConversation(conversations[0]);
-    }
-  }, [conversations, selectedConversation]);
+  // Remove auto-select entirely — user must click a conversation
+  // (hasAutoSelected ref kept for safety but effect removed)
 
   // Smooth scroll to bottom
   useEffect(() => {
