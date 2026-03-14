@@ -11,7 +11,7 @@ export function FollowPage() {
   const [loadingState, setLoadingState] = useState({});
 
   // Filter global users (exclude self)
-  const otherUsers = (users || []).filter(u => u._id !== currentUser?._id);
+  const otherUsers = (Array.isArray(users) ? users : []).filter(u => u._id !== currentUser?._id);
 
   const filteredUsers = otherUsers.filter((user) =>
     user.username?.toLowerCase().includes(searchQuery.toLowerCase())

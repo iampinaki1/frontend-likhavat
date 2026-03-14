@@ -7,7 +7,7 @@ import { toast } from 'sonner';
 export function ProfilePage() {
   const { username } = useParams();
   const navigate = useNavigate();
-  const { currentUser, setCurrentUser, users, books, scripts, poems, deleteAccount } = useApp();
+  const { currentUser, setCurrentUser, users, deleteAccount } = useApp();
   const [followersOpen, setFollowersOpen] = useState(false);
   const [followingOpen, setFollowingOpen] = useState(false);
   const [activeTab, setActiveTab] = useState('books');
@@ -23,11 +23,9 @@ export function ProfilePage() {
   const [booksCursor, setBooksCursor] = useState(null);
   const [scriptsCursor, setScriptsCursor] = useState(null);
   const [poemsCursor, setPoemsCursor] = useState(null);
-  const [bookmarksCursor, setBookmarksCursor] = useState(null);
   const [hasMoreBooks, setHasMoreBooks] = useState(true);
   const [hasMoreScripts, setHasMoreScripts] = useState(true);
   const [hasMorePoems, setHasMorePoems] = useState(true);
-  const [hasMoreBookmarks, setHasMoreBookmarks] = useState(true);
 
   const isOwnProfile = !username || username === currentUser?.username;
 
@@ -156,8 +154,6 @@ export function ProfilePage() {
         ...(scriptsRes.data?.scripts || []).map(s => ({ ...s, type: 'script' }))
       ];
       setUserBookmarks(allBookmarks);
-      setBookmarksCursor(null);
-      setHasMoreBookmarks(false);
     } catch (err) {
       console.error("Failed to load bookmarks", err);
     } finally {

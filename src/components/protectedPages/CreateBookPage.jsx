@@ -91,7 +91,7 @@ export function CreateBookPage() {
 
   };
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
 
     e.preventDefault();
 
@@ -102,33 +102,23 @@ export function CreateBookPage() {
 
     if (!currentUser) return;
 
-    const newBook = {
-
-      id: Date.now().toString(),
-      title,
-      description,
-      coverImage,
-
-      author: currentUser.id,
-      authorName: currentUser.username,
-
-      chapters,
-      visibility,
-
-      likes: [],
-      comments: [],
-
-      createdAt: new Date(),
-      updatedAt: new Date(),
-
-    };
-
-    addBook(newBook);
-
-    toast.success("Book created successfully!");
-
-    navigate("/");
-
+    try {
+      await addBook({
+        title,
+        description,
+        coverImage: coverImage || undefined,
+        visibility,
+        chapters: chapters.map(ch => ({
+          title: ch.title,
+          content: ch.content,
+          order: ch.order,
+        })),
+      });
+      toast.success("Book created successfully!");
+      navigate("/");
+    } catch (err) {
+      toast.error("Failed to create book");
+    }
   };
 
   return (

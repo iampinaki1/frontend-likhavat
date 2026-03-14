@@ -136,7 +136,8 @@ export function ScriptDetailPage() {
 
   /* ---------------- DATA NORMALIZATION ---------------- */
 
-  const versions = script.versions || [];
+  // Backend stores versions in `edits` field
+  const versions = script.edits || [];
   const comments = script.comments || [];
   const allowedUsers = script.allowedUsers || [];
 
@@ -154,16 +155,10 @@ export function ScriptDetailPage() {
 
   /* ---------------- EDIT MODEL ---------------- */
 
-  const edits = selectedVersion?.edits || [];
-
-  const sortedEdits = [...edits].sort(
-    (a,b)=>new Date(b.timestamp || b.createdAt) - new Date(a.timestamp || a.createdAt)
-  );
-
-  const latestEdit = sortedEdits[0];
+  const edits = [];
 
   const displayedContent =
-    latestEdit?.content ||
+    selectedVersion?.body ||
     selectedVersion?.content ||
     script.content ||
     "No content";
@@ -476,16 +471,19 @@ export function ScriptDetailPage() {
 
                 <div className="text-xs text-gray-500 flex items-center">
                   <User className="w-3 h-3 mr-1"/>
-                  {version.editorName || "Unknown"}
+                  {version.editedBy?.username || version.editorName || "Unknown"}
                 </div>
 
                 <div className="text-xs text-gray-500 flex items-center">
                   <Clock className="w-3 h-3 mr-1"/>
-                  {format(new Date(version.timestamp || version.createdAt),"MMM d")}
+                  {(() => {
+                    const d = new Date(version.timestamp || version.createdAt);
+                    return !isNaN(d) ? format(d, "MMM d") : "—";
+                  })()}
                 </div>
 
                 <div className="text-xs text-gray-500">
-                  {version.edits?.length || 0} edits
+                  {version.body ? 1 : 0} edits
                 </div>
 
                 {canEdit && (

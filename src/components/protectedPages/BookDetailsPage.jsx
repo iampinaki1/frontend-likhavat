@@ -244,7 +244,7 @@ export function BookDetailPage() {
                 </h2>
 
                 <p className="text-gray-500">
-                  Updated {format(chapter.updatedAt || new Date(), "MMM d, yyyy")}
+                  Updated {chapter.updatedAt && !isNaN(new Date(chapter.updatedAt)) ? format(new Date(chapter.updatedAt), "MMM d, yyyy") : 'N/A'}
                 </p>
 
                 <div className="flex gap-2 mt-2">

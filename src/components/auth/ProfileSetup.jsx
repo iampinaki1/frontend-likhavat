@@ -29,6 +29,7 @@ export default function ProfileSetup() {
     const [selectedFile, setSelectedFile] = useState(null);
     const [isUploading, setIsUploading] = useState(false);
     const [bio, setBio] = useState(currentUser?.bio || '');
+    const [isPrivate, setIsPrivate] = useState(currentUser?.isPrivate ?? true);
 
     const handleFinalSubmit = async () => {
         const formData = new FormData();
@@ -39,14 +40,18 @@ export default function ProfileSetup() {
         }
 
         const bioChanged = bio.trim() !== (currentUser?.bio || '');
+        const privacyChanged = isPrivate !== (currentUser?.isPrivate ?? true);
 
-        if (!selectedFile && !selectedAvatar && !bioChanged) {
+        if (!selectedFile && !selectedAvatar && !bioChanged && !privacyChanged) {
             toast.error('Please make changes before saving.');
             return;
         }
 
         if (bioChanged) {
             formData.append('bio', bio.trim());
+        }
+        if (privacyChanged) {
+            formData.append('isPrivate', isPrivate);
         }
 
         setIsUploading(true);
@@ -189,16 +194,33 @@ export default function ProfileSetup() {
                             />
                         </div>
 
+                        {/* Privacy Toggle */}
+                        <div className="flex items-center justify-between p-3 rounded-xl border border-gray-700 bg-slate-900/50">
+                            <div>
+                                <p className="text-sm font-semibold text-gray-200">Private Account</p>
+                                <p className="text-xs text-gray-400">Only approved followers can see your content</p>
+                            </div>
+                            <label className="relative inline-flex items-center cursor-pointer">
+                                <input
+                                    type="checkbox"
+                                    className="sr-only peer"
+                                    checked={isPrivate}
+                                    onChange={(e) => setIsPrivate(e.target.checked)}
+                                />
+                                <div className="w-11 h-6 bg-gray-600 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-amber-500"></div>
+                            </label>
+                        </div>
+
                         {/* Action Buttons */}
                         <div className="space-y-3 pt-4 border-t border-gray-700/50">
                             <button
                                 type="button"
-                                className={`w-full py-2.5 rounded-xl font-bold transition-all duration-200 ${(!selectedAvatar && !uploadedImage && bio.trim() === (currentUser?.bio || '')) || isUploading
+                                className={`w-full py-2.5 rounded-xl font-bold transition-all duration-200 ${(!selectedAvatar && !uploadedImage && bio.trim() === (currentUser?.bio || '') && isPrivate === (currentUser?.isPrivate ?? true)) || isUploading
                                     ? 'bg-slate-700 text-gray-400 cursor-not-allowed'
                                     : 'bg-blue-600 hover:bg-blue-500 hover:shadow-lg text-white'
                                     }`}
                                 onClick={handleFinalSubmit}
-                                disabled={(!selectedAvatar && !uploadedImage && bio.trim() === (currentUser?.bio || '')) || isUploading}
+                                disabled={(!selectedAvatar && !uploadedImage && bio.trim() === (currentUser?.bio || '') && isPrivate === (currentUser?.isPrivate ?? true)) || isUploading}
                             >
                                 {isUploading ? 'Uploading...' : 'Finish Setup'}
                             </button>

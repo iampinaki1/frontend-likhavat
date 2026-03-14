@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect, useMemo } from 'react';
+import React, { createContext, useContext, useState, useEffect, useMemo, useRef } from 'react';
 import axios from 'axios';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000/api';
@@ -8,42 +8,34 @@ export const api = axios.create({
   withCredentials: true,
 });
 
-// Log every outgoing request to debug infinite loops
 api.interceptors.request.use(request => {
   console.log(`[API CALL] ${request.method.toUpperCase()} ${request.url}`);
   return request;
 });
 
-// Setup Axios Interceptor for Automatic Token Refresh
+// Auto-refresh interceptor — only retries once, never retries refresh itself
 api.interceptors.response.use(
   (response) => response,
   async (error) => {
     const originalRequest = error.config;
 
-    // VERY IMPORTANT: Do NOT intercept requests to /user/refresh, or else an expired refresh token = infinite loop!
     if (originalRequest.url.includes('/user/refresh')) {
       return Promise.reject(error);
     }
 
-    // If the error is 401 (Unauthorized) and we haven't already tried refreshing
     if (error.response?.status === 401 && !originalRequest._retry) {
       originalRequest._retry = true;
-
       try {
-        // Attempt to hit the refresh endpoint (relies on HttpOnly refreshToken cookie)
         await api.post('/user/refresh');
-
-        // If successful, the new HttpOnly accessToken cookie is set automatically.
-        // Re-run the exact original request that failed
         return api(originalRequest);
       } catch (refreshError) {
-        // If refreshing fails (e.g. refreshToken is expired or missing), we're fully logged out
         console.error('Session expired. Please log in again.');
+        localStorage.removeItem('isAuthenticated');
         return Promise.reject(refreshError);
       }
     }
 
-    if (error.response && error.response.status >= 500) {
+    if (error.response?.status >= 500) {
       window.location.href = '/error';
     }
 
@@ -57,35 +49,30 @@ export function AppProvider({ children }) {
   const [currentUser, setCurrentUser] = useState(null);
   const [books, setBooks] = useState([]);
   const [scripts, setScripts] = useState([]);
-  const [poems, setPoems] = useState([]); // Deprecated
-  const [conversations, setConversations] = useState([]);
+  const [poems, setPoems] = useState([]);
   const [users, setUsers] = useState([]);
   const [followRequests, setFollowRequests] = useState([]);
   const [loading, setLoading] = useState(true);
+  const hasFetchedData = useRef(false);
 
   const isAuthenticated = currentUser !== null;
 
-  // Initialize session
+  // Initialize session on mount
   useEffect(() => {
     const initSession = async () => {
-      // Fast path: if we definitely know we aren't logged in, skip the network call entirely
       if (localStorage.getItem('isAuthenticated') !== 'true') {
         setLoading(false);
         return;
       }
-
       try {
         const { data } = await api.post('/user/refresh');
         if (data.accessToken && data.user) {
-          // Cleanly restore session strictly from HttpOnly cookie payloads
           setCurrentUser(data.user);
+        } else {
+          localStorage.removeItem('isAuthenticated');
         }
       } catch (err) {
-        // If 401/403, our HttpOnly session cookie has expired or doesn't exist. Clear the local hint.
         localStorage.removeItem('isAuthenticated');
-        if (err.response?.status !== 401 && err.response?.status !== 403) {
-          console.error("Session init failed:", err);
-        }
       } finally {
         setLoading(false);
       }
@@ -93,126 +80,91 @@ export function AppProvider({ children }) {
     initSession();
   }, []);
 
+  // Fetch app data once when user is authenticated
+  useEffect(() => {
+    if (currentUser?._id && !hasFetchedData.current) {
+      hasFetchedData.current = true;
+      fetchFollowRequests();
+      fetchUsers();
+      fetchBooks();
+      fetchScripts();
+      fetchPoems();
+    } else if (!currentUser?._id) {
+      hasFetchedData.current = false;
+      setBooks([]);
+      setScripts([]);
+      setPoems([]);
+      setUsers([]);
+      setFollowRequests([]);
+    }
+  }, [currentUser?._id]);
+
   const fetchUsers = async () => {
     try {
       const res = await api.get('/user/all');
-      if (res.data) setUsers(res.data);
+      if (Array.isArray(res.data)) setUsers(res.data);
     } catch (err) {
       console.error(err);
     }
   };
 
   const fetchFollowRequests = async () => {
-    if (!currentUser) return;
     try {
       const res = await api.get('/user/receivedRequest');
-      if (res.data) setFollowRequests(res.data);
+      if (Array.isArray(res.data)) setFollowRequests(res.data);
     } catch (err) {
       console.error(err);
     }
   };
 
-  // Fetch application data only when the user is fully authenticated
-  // Use a ref to track if we've already fetched to prevent duplicate calls
-  const [hasFetchedData, setHasFetchedData] = useState(false);
-  
-  useEffect(() => {
-    if (currentUser?._id && !hasFetchedData) {
-      fetchFollowRequests();
-      fetchUsers();
-      fetchBooks();
-      fetchScripts();
-      fetchPoems();
-      setHasFetchedData(true);
-    } else if (!currentUser?._id) {
-      // Clear data to completely scrub local memory on logout/failure
-      setBooks([]);
-      setScripts([]);
-      setPoems([]);
-      setUsers([]);
-      setFollowRequests([]);
-      setHasFetchedData(false);
-    }
-  }, [currentUser?._id]);
-
   const fetchBooks = async (lastId = null) => {
     try {
       const url = lastId ? `/books/book?lastId=${lastId}` : '/books/book';
       const res = await api.get(url);
-      if (res.data.success) {
-        // Map backend 'image' to frontend 'coverImage' requirement
-        const mappedBooks = res.data.books.map(b => ({
-          ...b,
-          id: b._id,
+      if (res.data?.success) {
+        const mapped = res.data.books.map(b => ({
+          ...b, id: b._id,
           coverImage: b.image && b.image !== "no img" ? b.image : null
         }));
-
-        if (lastId) {
-          setBooks(prev => [...prev, ...mappedBooks]);
-        } else {
-          setBooks(mappedBooks);
-        }
+        if (lastId) setBooks(prev => [...prev, ...mapped]);
+        else setBooks(mapped);
         return res.data.nextCursor;
       }
-    } catch (e) {
-      console.error(e);
-    }
+    } catch (e) { console.error(e); }
   };
 
   const fetchScripts = async (lastId = null) => {
     try {
       const url = lastId ? `/scripts/script?lastId=${lastId}` : '/scripts/script';
       const res = await api.get(url);
-      if (res.data.success) {
-        // Map backend 'image' to frontend 'coverImage' requirement
-        const mappedScripts = res.data.scripts.map(s => ({
-          ...s,
-          id: s._id,
+      if (res.data?.success) {
+        const mapped = res.data.scripts.map(s => ({
+          ...s, id: s._id,
           coverImage: s.image && s.image !== "no img" ? s.image : null
         }));
-
-        if (lastId) {
-          setScripts(prev => [...prev, ...mappedScripts]);
-        } else {
-          setScripts(mappedScripts);
-        }
+        if (lastId) setScripts(prev => [...prev, ...mapped]);
+        else setScripts(mapped);
         return res.data.nextCursor;
       }
-    } catch (e) {
-      console.error(e);
-    }
+    } catch (e) { console.error(e); }
   };
 
   const fetchPoems = async () => {
     try {
       const res = await api.get('/poems/poem');
-      if (res.data.success) {
-        setPoems(res.data.poems);
-      }
-    } catch (e) {
-      console.error(e);
-    }
+      if (res.data?.success) setPoems(res.data.poems);
+    } catch (e) { console.error(e); }
   };
 
   const login = async (username, password) => {
     try {
       const { data } = await api.post('/user/signin', { email_username: username, password });
-
-      if (data && data.user) {
+      if (data?.user) {
         setCurrentUser(data.user);
-      } else {
-        // Fallback if backend doesn't return user obj
-        const userRes = await api.get(`/user/profile/${username}`);
-        if (userRes.data && userRes.data.user) {
-          setCurrentUser(userRes.data.user);
-        } else if (userRes.data && userRes.data._id) {
-          setCurrentUser(userRes.data);
-        } else {
-          setCurrentUser({ username });
-        }
+        localStorage.setItem('isAuthenticated', 'true');
+        return true;
       }
-      localStorage.setItem('isAuthenticated', 'true');
-      return true;
+      return false;
     } catch (err) {
       console.error(err);
       return false;
@@ -224,17 +176,15 @@ export function AppProvider({ children }) {
       const { data } = await api.post('/user/signup', { username, email, password, termAndCondition: true });
       return { success: true, tempUserId: data.tempUserId };
     } catch (err) {
-      console.error(err);
       return { success: false, error: err.response?.data?.msg || 'Signup failed' };
     }
   };
 
   const verifySignup = async (tempUserId, verificationCode) => {
     try {
-      const { data } = await api.post('/user/verifySignup', { tempUserId, verificationCode });
+      await api.post('/user/verifySignup', { tempUserId, verificationCode });
       return { success: true };
     } catch (err) {
-      console.error(err);
       return { success: false, error: err.response?.data?.msg || 'Verification failed' };
     }
   };
@@ -242,11 +192,11 @@ export function AppProvider({ children }) {
   const logout = async () => {
     try {
       await api.get('/user/logout');
-      setCurrentUser(null);
-      localStorage.removeItem('username');
-      localStorage.removeItem('isAuthenticated');
     } catch (err) {
       console.error(err);
+    } finally {
+      setCurrentUser(null);
+      localStorage.removeItem('isAuthenticated');
     }
   };
 
@@ -255,7 +205,6 @@ export function AppProvider({ children }) {
       const { data } = await api.post('/user/profile/password/reset', { email, newpassword });
       return { success: true, data };
     } catch (err) {
-      console.error(err);
       return { success: false, error: err.response?.data?.msg || "Failed to send reset code" };
     }
   };
@@ -265,7 +214,6 @@ export function AppProvider({ children }) {
       const { data } = await api.post('/user/profile/verify-otp', { tempUserId, verificationCode });
       return { success: true, data };
     } catch (err) {
-      console.error(err);
       return { success: false, error: err.response?.data?.msg || "Failed to verify reset code" };
     }
   };
@@ -273,18 +221,22 @@ export function AppProvider({ children }) {
   const updateProfile = async (formData) => {
     try {
       const { data } = await api.post('/user/profile/add', formData, {
-        headers: {
-          'Content-Type': 'multipart/form-data',
-        },
+        headers: { 'Content-Type': 'multipart/form-data' },
       });
+      // Update all changed fields in currentUser
+      setCurrentUser(prev => ({
+        ...prev,
+        ...(data.profilePic ? { profilePic: data.profilePic } : {}),
+        ...(formData.get?.('bio') !== null ? { bio: formData.get('bio') } : {}),
+        ...(formData.get?.('isPrivate') !== null ? { isPrivate: formData.get('isPrivate') === 'true' } : {}),
+      }));
       if (data.profilePic) {
-        setCurrentUser((prev) => ({ ...prev, profilePic: data.profilePic }));
-        const updatedUsers = users.map((u) => u.username === currentUser.username ? { ...u, profilePic: data.profilePic } : u);
-        setUsers(updatedUsers);
+        setUsers(prev => prev.map(u =>
+          u.username === currentUser?.username ? { ...u, profilePic: data.profilePic } : u
+        ));
       }
       return { success: true, data };
     } catch (err) {
-      console.error(err);
       return { success: false, error: err.response?.data?.msg || "Update failed" };
     }
   };
@@ -292,41 +244,36 @@ export function AppProvider({ children }) {
   const addBook = async (bookData) => {
     try {
       const { data } = await api.post('/books/book/create', bookData);
-      setBooks([data, ...books]);
+      if (data?._id) {
+        const mapped = { ...data, id: data._id, coverImage: data.image && data.image !== "no img" ? data.image : null };
+        setBooks(prev => [mapped, ...prev]);
+      }
     } catch (err) {
       console.error(err);
+      throw err;
     }
   };
 
   const addScript = async (scriptData) => {
     try {
       const { data } = await api.post('/scripts/script', scriptData);
-
-      // If backend also returns a created script, prefer that (it will have proper _id/image)
-      if (data.script) {
-        setScripts([
-          {
-            ...data.script,
-            id: data.script._id,
-            coverImage: data.script.image && data.script.image !== "no img"
-              ? data.script.image
-              : scriptData.coverImage || null,
-          },
-          ...scripts,
-        ]);
-      } else {
-        // Fallback: use local scriptData
-        setScripts([scriptData, ...scripts]);
+      if (data?.script) {
+        setScripts(prev => [{
+          ...data.script,
+          id: data.script._id,
+          coverImage: data.script.image && data.script.image !== "no img" ? data.script.image : null,
+        }, ...prev]);
       }
     } catch (err) {
       console.error(err);
+      throw err;
     }
   };
 
   const addPoem = async (poemData) => {
     try {
       const { data } = await api.post('/poems/poem/create', poemData);
-      if (data.success && data.poem) setPoems([data.poem, ...poems]);
+      if (data?.success && data.poem) setPoems(prev => [data.poem, ...prev]);
     } catch (err) {
       console.error(err);
     }
@@ -335,7 +282,7 @@ export function AppProvider({ children }) {
   const updateBook = async (id, updates) => {
     try {
       const { data } = await api.put(`/books/book/${id}/update`, updates);
-      setBooks(books.map((b) => (b._id === id || b.id === id ? { ...b, ...data } : b)));
+      setBooks(prev => prev.map(b => (b._id === id || b.id === id) ? { ...b, ...data } : b));
     } catch (err) {
       console.error(err);
     }
@@ -344,7 +291,7 @@ export function AppProvider({ children }) {
   const updateScript = async (id, updates) => {
     try {
       const { data } = await api.put(`/scripts/script/${id}/update`, updates);
-      setScripts(scripts.map((s) => (s._id === id || s.id === id ? { ...s, ...data } : s)));
+      setScripts(prev => prev.map(s => (s._id === id || s.id === id) ? { ...s, ...data } : s));
     } catch (err) {
       console.error(err);
     }
@@ -353,7 +300,7 @@ export function AppProvider({ children }) {
   const deleteBook = async (id) => {
     try {
       await api.delete(`/books/book/${id}`);
-      setBooks(books.filter((b) => b._id !== id && b.id !== id));
+      setBooks(prev => prev.filter(b => b._id !== id && b.id !== id));
     } catch (err) {
       console.error(err);
     }
@@ -362,7 +309,7 @@ export function AppProvider({ children }) {
   const deleteScript = async (id) => {
     try {
       await api.delete(`/scripts/script/${id}`);
-      setScripts(scripts.filter((s) => s._id !== id && s.id !== id));
+      setScripts(prev => prev.filter(s => s._id !== id && s.id !== id));
     } catch (err) {
       console.error(err);
     }
@@ -371,7 +318,7 @@ export function AppProvider({ children }) {
   const deletePoem = async (id) => {
     try {
       await api.delete(`/poems/poem/${id}`);
-      setPoems(poems.filter((p) => p._id !== id && p.id !== id));
+      setPoems(prev => prev.filter(p => p._id !== id && p.id !== id));
     } catch (err) {
       console.error(err);
     }
@@ -379,105 +326,91 @@ export function AppProvider({ children }) {
 
   const toggleLike = async (id, type) => {
     if (!currentUser) return;
-
-    // Optimistic UI toggle
-    const userIdentifier = currentUser._id || currentUser.id;
+    const uid = currentUser._id;
     try {
       if (type === 'book') {
-        const { data } = await api.post(`/books/book/${id}/like`);
-        setBooks(
-          books.map((book) => {
-            if (book._id === id || book.id === id) {
-              const likes = (book.likes || []).includes(userIdentifier)
-                ? book.likes.filter((uid) => uid !== userIdentifier)
-                : [...(book.likes || []), userIdentifier];
-              return { ...book, likes };
-            }
-            return book;
-          })
-        );
+        await api.post(`/books/book/${id}/like`);
+        setBooks(prev => prev.map(b => {
+          if (b._id !== id && b.id !== id) return b;
+          const likes = (b.likes || []).includes(uid)
+            ? b.likes.filter(x => x !== uid)
+            : [...(b.likes || []), uid];
+          return { ...b, likes };
+        }));
       } else if (type === 'script') {
-        const { data } = await api.post(`/scripts/script/${id}/like`);
-        setScripts(
-          scripts.map((script) => {
-            if (script._id === id || script.id === id) {
-              const likes = (script.likes || []).includes(userIdentifier)
-                ? script.likes.filter((uid) => uid !== userIdentifier)
-                : [...(script.likes || []), userIdentifier];
-              return { ...script, likes };
-            }
-            return script;
-          })
-        );
+        await api.post(`/scripts/script/${id}/like`);
+        setScripts(prev => prev.map(s => {
+          if (s._id !== id && s.id !== id) return s;
+          const likes = (s.likes || []).includes(uid)
+            ? s.likes.filter(x => x !== uid)
+            : [...(s.likes || []), uid];
+          return { ...s, likes };
+        }));
       } else if (type === 'poem') {
-        const { data } = await api.post(`/poems/poem/${id}/like`);
-        setPoems(
-          poems.map((poem) => {
-            if (poem._id === id || poem.id === id) {
-              const likes = (poem.likes || []).includes(userIdentifier)
-                ? poem.likes.filter((uid) => uid !== userIdentifier)
-                : [...(poem.likes || []), userIdentifier];
-              return { ...poem, likes };
-            }
-            return poem;
-          })
-        );
+        await api.post(`/poems/poem/${id}/like`);
+        setPoems(prev => prev.map(p => {
+          if (p._id !== id && p.id !== id) return p;
+          const likes = (p.likes || []).includes(uid)
+            ? p.likes.filter(x => x !== uid)
+            : [...(p.likes || []), uid];
+          return { ...p, likes };
+        }));
       }
     } catch (err) {
-      console.error("Failed to toggle like on backend", err);
+      console.error("Failed to toggle like", err);
     }
   };
 
   const toggleBookmark = async (id, type) => {
     if (!currentUser) return;
-
     try {
       if (type === 'book') {
-        const { data } = await api.post(`/books/book/${id}/bookmark`);
+        await api.post(`/books/book/${id}/bookmark`);
         setCurrentUser(prev => {
-          const isBookmarked = (prev.bookmarksBook || []).includes(id);
+          const has = (prev.bookmarksBook || []).includes(id);
           return {
             ...prev,
-            bookmarksBook: isBookmarked
-              ? prev.bookmarksBook.filter(bid => bid !== id)
+            bookmarksBook: has
+              ? prev.bookmarksBook.filter(x => x !== id)
               : [...(prev.bookmarksBook || []), id]
           };
         });
       } else if (type === 'script') {
-        const { data } = await api.post(`/scripts/script/${id}/bookmark`);
+        await api.post(`/scripts/script/${id}/bookmark`);
         setCurrentUser(prev => {
-          const isBookmarked = (prev.bookmarksScript || []).includes(id);
+          const has = (prev.bookmarksScript || []).includes(id);
           return {
             ...prev,
-            bookmarksScript: isBookmarked
-              ? prev.bookmarksScript.filter(sid => sid !== id)
+            bookmarksScript: has
+              ? prev.bookmarksScript.filter(x => x !== id)
               : [...(prev.bookmarksScript || []), id]
           };
         });
       }
     } catch (err) {
-      console.error("Failed to toggle bookmark on backend", err);
+      console.error("Failed to toggle bookmark", err);
     }
   };
 
   const addComment = async (id, type, content) => {
     if (!currentUser) return;
-
     try {
       if (type === 'book') {
         const { data } = await api.post(`/books/book/${id}/comment`, { text: content });
-        if (data && data.success) {
-          setBooks(books.map((book) => book._id === id || book.id === id
-            ? { ...book, comments: [...(book.comments || []), data.comment] }
-            : book
+        if (data?.success) {
+          setBooks(prev => prev.map(b =>
+            (b._id === id || b.id === id)
+              ? { ...b, comments: [...(b.comments || []), data.comment] }
+              : b
           ));
         }
       } else {
         const { data } = await api.post(`/scripts/script/${id}/comment`, { text: content });
-        if (data && data.success) {
-          setScripts(scripts.map((script) => script._id === id || script.id === id
-            ? { ...script, comments: [...(script.comments || []), data.comment] }
-            : script
+        if (data?.success) {
+          setScripts(prev => prev.map(s =>
+            (s._id === id || s.id === id)
+              ? { ...s, comments: [...(s.comments || []), data.comment] }
+              : s
           ));
         }
       }
@@ -491,19 +424,21 @@ export function AppProvider({ children }) {
       const urlParams = cursor ? `?lastId=${cursor}` : '';
       if (type === 'book') {
         const { data } = await api.get(`/books/book/${id}/comment${urlParams}`);
-        if (data && data.success) {
-          setBooks((prevBooks) => prevBooks.map((book) => book._id === id || book.id === id
-            ? { ...book, comments: cursor ? [...(book.comments || []), ...data.comments] : data.comments }
-            : book
+        if (data?.success) {
+          setBooks(prev => prev.map(b =>
+            (b._id === id || b.id === id)
+              ? { ...b, comments: cursor ? [...(b.comments || []), ...data.comments] : data.comments }
+              : b
           ));
           return data.nextCursor;
         }
       } else if (type === 'script') {
         const { data } = await api.get(`/scripts/script/${id}/comment${urlParams}`);
-        if (data && data.success) {
-          setScripts((prevScripts) => prevScripts.map((script) => script._id === id || script.id === id
-            ? { ...script, comments: cursor ? [...(script.comments || []), ...data.comments] : data.comments }
-            : script
+        if (data?.success) {
+          setScripts(prev => prev.map(s =>
+            (s._id === id || s.id === id)
+              ? { ...s, comments: cursor ? [...(s.comments || []), ...data.comments] : data.comments }
+              : s
           ));
           return data.nextCursor;
         }
@@ -514,54 +449,49 @@ export function AppProvider({ children }) {
     return null;
   };
 
-  const followUser = async (usernameToFollow) => {
-    if (!currentUser) return;
+  // These only update local state — the actual API call is made in the component
+  const followUser = (targetId) => {
+    if (!targetId) return;
+    setCurrentUser(prev => ({
+      ...prev,
+      following: [...(prev.following || []), targetId]
+    }));
+  };
+
+  const unfollowUser = (targetId) => {
+    if (!targetId) return;
+    setCurrentUser(prev => ({
+      ...prev,
+      following: (prev.following || []).filter(id =>
+        id.toString ? id.toString() !== targetId.toString() : id !== targetId
+      )
+    }));
+  };
+
+  const acceptFollowRequest = async (requestId) => {
     try {
-      const { data } = await api.post(`/user/${usernameToFollow}/followunfollow`);
-
-      // Successfully Followed/Unfollowed
-      if (data.targetId) {
-        if (data.msg === "Followed") {
-          setCurrentUser(prev => ({ ...prev, following: [...(prev.following || []), data.targetId] }));
-        } else if (data.msg === "Unfollowed") {
-          setCurrentUser(prev => ({ ...prev, following: (prev.following || []).filter(id => id !== data.targetId) }));
-        }
-      }
-      // Sent Follow Request to Private Profile (Backend returns the request doc instance)
-      else if (data && data._id && data.status === "pending") {
-        setCurrentUser(prev => ({ ...prev, sentRequests: [...(prev.sentRequests || []), data.receiver] }));
-      }
-    } catch (err) { console.error(err); }
+      await api.post('/user/acceptRequest', { requestId });
+      setFollowRequests(prev => prev.filter(r => r._id !== requestId));
+    } catch (err) {
+      console.error(err);
+    }
   };
 
-  const unfollowUser = async (usernameToFollow) => {
-    if (!currentUser) return;
-    // unfollow uses the same toggle endpoint
-    await followUser(usernameToFollow);
-  };
-
-  const acceptFollowRequest = async (userId) => {
+  const rejectFollowRequest = async (requestId) => {
     try {
-      await api.post('/user/acceptRequest', { requestId: userId });
-      setFollowRequests(reqs => reqs.filter(r => r._id !== userId));
-      // Optionally upate followers list here
-    } catch (err) { }
+      await api.post('/user/rejectRequest', { requestId });
+      setFollowRequests(prev => prev.filter(r => r._id !== requestId));
+    } catch (err) {
+      console.error(err);
+    }
   };
 
-  const rejectFollowRequest = async (userId) => {
-    try {
-      await api.post('/user/rejectRequest', { requestId: userId });
-      setFollowRequests(reqs => reqs.filter(r => r._id !== userId));
-    } catch (err) { }
-  };
-
-  // Script access requests (author handles an individual request by its requestId)
   const acceptScriptAccessRequest = async (requestId) => {
     try {
       await api.post(`/scripts/script/${requestId}/accept`);
       await fetchScripts();
     } catch (err) {
-      console.error("Failed to accept script access request", err);
+      console.error(err);
     }
   };
 
@@ -570,7 +500,7 @@ export function AppProvider({ children }) {
       await api.post(`/scripts/script/${requestId}/reject`);
       await fetchScripts();
     } catch (err) {
-      console.error("Failed to reject script access request", err);
+      console.error(err);
     }
   };
 
@@ -578,60 +508,27 @@ export function AppProvider({ children }) {
     try {
       await api.post('/user/profile/delete');
       setCurrentUser(null);
-      localStorage.removeItem('username');
       localStorage.removeItem('isAuthenticated');
       return true;
     } catch (err) {
-      console.error("Failed to delete account:", err);
+      console.error(err);
       return false;
     }
   };
 
-  const sendMessage = (receiverId, content) => {
-    if (!currentUser) return;
-    console.log('Sending message to:', receiverId, content);
-  };
-
   const contextValue = useMemo(() => ({
-    currentUser,
-    setCurrentUser,
-    isAuthenticated,
-    loading,
-    login,
-    signup,
-    verifySignup,
-    requestPasswordReset,
-    verifyPasswordReset,
-    logout,
-    users,
-    followRequests,
-    books,
-    scripts,
-    poems,
-    addBook,
-    addScript,
-    addPoem,
-    updateBook,
-    updateScript,
-    updateProfile,
-    deleteBook,
-    deleteScript,
-    toggleLike,
-    toggleBookmark,
-    addComment,
-    fetchComments,
-    followUser,
-    unfollowUser,
-    acceptFollowRequest,
-    rejectFollowRequest,
-    acceptScriptAccessRequest,
-    rejectScriptAccessRequest,
-    conversations,
-    sendMessage,
+    currentUser, setCurrentUser, isAuthenticated, loading,
+    login, signup, verifySignup, requestPasswordReset, verifyPasswordReset,
+    logout, users, followRequests, books, scripts, poems,
+    addBook, addScript, addPoem, updateBook, updateScript, updateProfile,
+    deleteBook, deleteScript, deletePoem, toggleLike, toggleBookmark,
+    addComment, fetchComments, followUser, unfollowUser,
+    acceptFollowRequest, rejectFollowRequest,
+    acceptScriptAccessRequest, rejectScriptAccessRequest,
     deleteAccount,
   }), [
     currentUser, isAuthenticated, loading, users, followRequests,
-    books, scripts, poems, conversations
+    books, scripts, poems,
   ]);
 
   return (
@@ -643,8 +540,6 @@ export function AppProvider({ children }) {
 
 export function useApp() {
   const context = useContext(AppContext);
-  if (!context) {
-    throw new Error('useApp must be used within AppProvider');
-  }
+  if (!context) throw new Error('useApp must be used within AppProvider');
   return context;
 }
