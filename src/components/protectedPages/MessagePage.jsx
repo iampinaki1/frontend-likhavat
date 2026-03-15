@@ -293,6 +293,22 @@ export function MessagesPage() {
     }
   }, [messages]);
 
+  // IntersectionObserver — load more conversations when sentinel at bottom of list is visible
+  useEffect(() => {
+    const sentinel = convBottomRef.current;
+    if (!sentinel) return;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0].isIntersecting && convHasMore && !loadingMoreConvs) {
+          fetchConversations(convCursor);
+        }
+      },
+      { threshold: 0.1 }
+    );
+    observer.observe(sentinel);
+    return () => observer.disconnect();
+  }, [convHasMore, loadingMoreConvs, convCursor, fetchConversations]);
+
   // Scroll-up sentinel to load older messages
   useEffect(() => {
     const container = messageContainerRef.current;
@@ -722,6 +738,8 @@ export function MessagesPage() {
                       <p className="text-sm">No conversations found</p>
                     </div>
                   )}
+                  {/* Sentinel for infinite scroll — triggers loading more convs */}
+                  <div ref={convBottomRef} className="h-1" />
                 </div>
               )}
             </div>

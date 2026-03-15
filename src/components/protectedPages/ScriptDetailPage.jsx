@@ -177,9 +177,9 @@ export function ScriptDetailPage() {
 
   const isAuthor = userId === (script.author?._id || script.author);
 
-  const isAllowedUser = allowedUsers.includes(userId);
+  const isAllowedUser = allowedUsers.some(u => (u._id || u) === userId || (u._id || u)?.toString() === userId?.toString());
 
-  const canEdit = isAuthor || isAllowedUser;
+  const canEdit = isAuthor;
 
   /* ---------------- ACTIONS ---------------- */
 
@@ -347,8 +347,8 @@ export function ScriptDetailPage() {
 
           <h1 className="text-3xl font-semibold mb-2">{script.title}</h1>
 
-          <Link to={`/profile/${script.authorName}`} className="text-sm hover:underline">
-            by {script.authorName}
+          <Link to={`/profile/${script.author?.username}`} className="text-sm hover:underline">
+            by {script.author?.username}
           </Link>
 
           <p className="text-gray-600 mt-4">{script.description}</p>
@@ -540,9 +540,20 @@ export function ScriptDetailPage() {
             Allowed Users
           </h3>
 
-          {allowedUsers.map(id=>(
-            <p key={id}>User {id}</p>
-          ))}
+          {allowedUsers.map(u => {
+            const id = u._id || u;
+            const name = u.username || String(id).slice(-6);
+            return (
+              <div key={String(id)} className="flex items-center gap-2 mb-2">
+                <div className="h-8 w-8 rounded-full bg-gray-200 flex items-center justify-center text-sm font-medium">
+                  {name.charAt(0).toUpperCase()}
+                </div>
+                <Link to={`/profile/${u.username}`} className="text-sm hover:underline">
+                  {name}
+                </Link>
+              </div>
+            );
+          })}
 
         </div>
 

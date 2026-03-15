@@ -1,14 +1,16 @@
 import React, { useState, useEffect } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import { api } from "../../context/Appcontext.jsx";
+import { api, useApp } from "../../context/Appcontext.jsx";
 import { ArrowLeft, Save, Loader2, Copy, Check } from "lucide-react";
 import { toast } from "sonner";
 
 export function ScriptVersionEditPage() {
   const { scriptId, versionId } = useParams();
   const navigate = useNavigate();
+  const { currentUser } = useApp();
   
   const [script, setScript] = useState(null);
+  const [isOwner, setIsOwner] = useState(false);
   const [versionContent, setVersionContent] = useState("");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -25,6 +27,10 @@ export function ScriptVersionEditPage() {
           setScript(data.script);
           const editsWithContent = data.script.edits || [];
           setVersions(editsWithContent);
+
+          const userId = currentUser?._id || currentUser?.id;
+          const authorId = data.script.author?._id || data.script.author;
+          setIsOwner(userId && authorId && userId.toString() === authorId.toString());
           
           // Set initial content - if versionId is provided, find that version; otherwise use latest
           if (versionId && editsWithContent.length > 0) {
@@ -33,11 +39,9 @@ export function ScriptVersionEditPage() {
               setSelectedVersionIndex(versionIndex);
               setVersionContent(editsWithContent[versionIndex].body || "");
             } else {
-              // Fallback to latest
               setVersionContent(editsWithContent[editsWithContent.length - 1]?.body || "");
             }
           } else if (editsWithContent.length > 0) {
-            // Default to latest version
             const latestIndex = editsWithContent.length - 1;
             setSelectedVersionIndex(latestIndex);
             setVersionContent(editsWithContent[latestIndex].body || "");
@@ -51,7 +55,7 @@ export function ScriptVersionEditPage() {
       }
     };
     loadScriptAndVersions();
-  }, [scriptId, versionId]);
+  }, [scriptId, versionId, currentUser]);
 
   // Handle version switching
   const handleVersionSwitch = (index) => {
@@ -161,7 +165,8 @@ export function ScriptVersionEditPage() {
 
           {/* Version Tabs */}
           <div className="flex gap-2 overflow-x-auto pb-2">
-            {versions.map((version, index) => (
+            {/* Only owner can switch between and edit existing versions */}
+            {isOwner && versions.map((version, index) => (
               <button
                 key={version._id || index}
                 onClick={() => handleVersionSwitch(index)}
@@ -176,8 +181,9 @@ export function ScriptVersionEditPage() {
             ))}
             <button
               onClick={() => {
+                const lastBody = versions.length > 0 ? versions[versions.length - 1].body || "" : "";
                 setSelectedVersionIndex(versions.length);
-                setVersionContent("");
+                setVersionContent(lastBody);
               }}
               className="px-4 py-2 rounded-lg whitespace-nowrap text-sm font-medium bg-green-500 text-white hover:bg-green-600 transition-colors"
             >
@@ -228,9 +234,9 @@ export function ScriptVersionEditPage() {
                 </button>
                 <button
                   onClick={handleSave}
-                  disabled={saving}
+                  disabled={saving || (!isOwner && selectedVersionIndex < versions.length)}
                   className="px-4 py-2 rounded-lg flex items-center gap-2 text-white font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                  style={{ backgroundColor: saving ? "#999" : "#D4A574" }}
+                  style={{ backgroundColor: (saving || (!isOwner && selectedVersionIndex < versions.length)) ? "#999" : "#D4A574" }}
                 >
                   {saving ? (
                     <>
