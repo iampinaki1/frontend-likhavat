@@ -7,7 +7,12 @@ import { Eye, EyeOff, Loader2 } from 'lucide-react';
 import { z } from 'zod';
 
 const signupSchema = z.object({
-  username: z.string().min(3, "Username must be at least 3 characters"),
+  username: z.string()
+    .min(3, "Username must be at least 3 characters")
+    .max(30, "Username can't exceed 30 characters")
+    .regex(/^[a-zA-Z0-9._]+$/, "Only letters, numbers, periods and underscores allowed")
+    .refine(v => !v.startsWith('.') && !v.endsWith('.'), "Username can't start or end with a period")
+    .refine(v => !/\.\./.test(v), "Username can't have consecutive periods"),
   email: z.string().email("Invalid email format"),
   password: z.string().min(8, "Password must be at least 8 characters"),
   confirmPassword: z.string(),
@@ -31,6 +36,20 @@ function Signup() {
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+  const [usernameError, setUsernameError] = useState('');
+
+  const handleUsernameChange = (e) => {
+    // Strip any character that isn't a-z, A-Z, 0-9, period or underscore
+    const raw = e.target.value.replace(/[^a-zA-Z0-9._]/g, '').slice(0, 30);
+    setUsername(raw);
+
+    // Live validation feedback
+    if (raw.length === 0) { setUsernameError(''); return; }
+    if (raw.length < 3) { setUsernameError('At least 3 characters'); return; }
+    if (raw.startsWith('.') || raw.endsWith('.')) { setUsernameError("Can't start or end with a period"); return; }
+    if (/\.\./.test(raw)) { setUsernameError("No consecutive periods"); return; }
+    setUsernameError('');
+  };
 
   const navigate = useNavigate();
   const { signup } = useApp();
@@ -87,18 +106,30 @@ function Signup() {
             autoComplete="email"
           />
 
-          <input
-            className="border select-none rounded-2xl text-center px-4 py-2
-             hover:border-blue-400
-             focus:outline-none focus:ring-2 focus:ring-blue-500
-             transition"
-            type="text"
-            required
-            value={username}
-            onChange={(e) => setUsername(e.target.value)}
-            placeholder="USERNAME"
-            autoComplete="off"
-          />
+          <div className="w-full">
+            <input
+              className="border select-none rounded-2xl text-center px-4 py-2 w-full
+               hover:border-blue-400
+               focus:outline-none focus:ring-2 focus:ring-blue-500
+               transition"
+              type="text"
+              required
+              value={username}
+              onChange={handleUsernameChange}
+              placeholder="USERNAME"
+              autoComplete="off"
+              maxLength={30}
+            />
+            <div className="flex justify-between mt-1 px-1">
+              {usernameError
+                ? <p className="text-xs text-red-400">{usernameError}</p>
+                : <p className="text-xs text-gray-400">Letters, numbers, . and _ only</p>
+              }
+              <p className={`text-xs ${username.length >= 28 ? 'text-yellow-400' : 'text-gray-400'}`}>
+                {username.length}/30
+              </p>
+            </div>
+          </div>
 
           <div className="relative w-full flex justify-center">
             <input
