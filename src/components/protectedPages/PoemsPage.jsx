@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect, useCallback } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useLocation } from "react-router-dom";
 import { useApp, api } from "../../context/Appcontext.jsx";
 import { Heart, User, ChevronUp, ChevronDown, Loader2, Trash2 } from "lucide-react";
 import { toast } from "sonner";
@@ -8,6 +8,8 @@ export function PoemsPage() {
 
   const { currentUser, setCurrentUser, toggleLike, followUser, unfollowUser, deletePoem } = useApp();
   const navigate = useNavigate();
+  const location = useLocation();
+  const targetPoemId = location.state?.poemId || null;
 
   const [poems, setPoems] = useState([]);
   const [cursor, setCursor] = useState(null);
@@ -25,11 +27,31 @@ export function PoemsPage() {
   useEffect(() => {
     const load = async () => {
       try {
-        const { data } = await api.get('/poems/poem');
-        if (data.success) {
-          setPoems(data.poems);
-          setCursor(data.nextCursor);
-          setHasMore(!!data.nextCursor);
+        // If a specific poem was requested, fetch it first so it's at index 0
+        if (targetPoemId) {
+          const [targetRes, feedRes] = await Promise.all([
+            api.get(`/poems/poem/${targetPoemId}`).catch(() => null),
+            api.get('/poems/poem'),
+          ]);
+          if (feedRes.data.success) {
+            let feedPoems = feedRes.data.poems || [];
+            if (targetRes?.data?.poem) {
+              const target = targetRes.data.poem;
+              // Remove duplicate if already in feed, then prepend
+              feedPoems = [target, ...feedPoems.filter(p => p._id !== target._id)];
+            }
+            setPoems(feedPoems);
+            setCursor(feedRes.data.nextCursor);
+            setHasMore(!!feedRes.data.nextCursor);
+            setCurrentIndex(0);
+          }
+        } else {
+          const { data } = await api.get('/poems/poem');
+          if (data.success) {
+            setPoems(data.poems);
+            setCursor(data.nextCursor);
+            setHasMore(!!data.nextCursor);
+          }
         }
       } catch (e) { console.error(e); }
       finally { setLoading(false); }

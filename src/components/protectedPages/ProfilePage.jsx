@@ -611,7 +611,7 @@ export function ProfilePage() {
                     >
                       <div className="p-4">
                         <h3 className="font-semibold text-lg hover:text-blue-600">
-                          <Link to={`/poems`}>{poem.title}</Link>
+                          <Link to={`/poems`} state={{ poemId: poem._id }}>{poem.title}</Link>
                         </h3>
                         <p className="text-sm text-gray-600 mt-2 whitespace-pre-wrap">{poem.content}</p>
                         <div className="flex items-center space-x-4 mt-4">

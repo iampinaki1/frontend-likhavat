@@ -15,12 +15,19 @@ export function MessagesPage() {
   const [selectedConversation, setSelectedConversation] = useState(null);
   const [messageInput, setMessageInput] = useState("");
   const [messages, setMessages] = useState([]);
+  const [msgCursor, setMsgCursor] = useState(null);
+  const [msgHasMore, setMsgHasMore] = useState(false);
+  const [loadingOlder, setLoadingOlder] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [isTyping, setIsTyping] = useState(false);
   const [newChatOpen, setNewChatOpen] = useState(false);
   const [conversations, setConversations] = useState([]);
+  const [convCursor, setConvCursor] = useState(null);
+  const [convHasMore, setConvHasMore] = useState(false);
+  const [loadingMoreConvs, setLoadingMoreConvs] = useState(false);
   const [onlineUsers, setOnlineUsers] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
+  const [msgLoading, setMsgLoading] = useState(false);
   const [showFeatureWarning, setShowFeatureWarning] = useState(true);
   const [pendingMessages, setPendingMessages] = useState(new Map());
   const [showError, setShowError] = useState(null);
@@ -28,11 +35,13 @@ export function MessagesPage() {
   const [followingUsers, setFollowingUsers] = useState([]);
 
   const messagesEndRef = useRef(null);
+  const topSentinelRef = useRef(null);
+  const convBottomRef = useRef(null);
   const typingTimeoutRef = useRef(null);
   const hasInitialized = useRef(false);
-  const hasAutoSelected = useRef(false);
   const messageContainerRef = useRef(null);
   const pendingMessageIdRef = useRef(null);
+  const shouldScrollBottom = useRef(true);
 
   // Initialize socket connection
   useEffect(() => {
@@ -137,37 +146,40 @@ export function MessagesPage() {
     };
 }, [currentUser?._id, selectedConversation]);
 
-  // Fetch all conversations
-  const fetchConversations = useCallback(async () => {
+  // Fetch conversations (paginated)
+  const fetchConversations = useCallback(async (cursor = null) => {
     if (!currentUser?._id) return;
-    setIsLoading(true);
+    cursor ? setLoadingMoreConvs(true) : setIsLoading(true);
     try {
-      const response = await api.get('/messages/conversations');
-      
-      // Transform conversations to match UI format
-      const transformedConversations = response.data.map((conv) => {
+      const params = cursor ? `?lastUpdated=${encodeURIComponent(cursor)}` : '';
+      const response = await api.get(`/messages/conversations${params}`);
+      const { conversations: convs, nextCursor } = response.data;
+
+      const transformed = convs.map((conv) => {
         const otherUser = conv.participants.find(
-          (p) => p._id !== currentUser._id
+          (p) => p._id.toString() !== currentUser._id.toString()
         );
-        const lastMessage = conv.messages[0];
-        
+        const lastMessage = conv.messages?.[0];
         return {
           id: otherUser._id,
           userId: otherUser._id,
           username: otherUser.username,
           profilePic: otherUser.profilePic,
           lastMessage: lastMessage?.message || "No messages yet",
-          timestamp: lastMessage?.createdAt || new Date(),
+          timestamp: lastMessage?.createdAt || conv.updatedAt || new Date(),
+          updatedAt: conv.updatedAt,
           unread: 0,
           isOnline: onlineUsers.includes(otherUser._id.toString()),
         };
       });
-      
-      setConversations(transformedConversations);
+
+      setConversations(prev => cursor ? [...prev, ...transformed] : transformed);
+      setConvCursor(nextCursor || null);
+      setConvHasMore(!!nextCursor);
     } catch (error) {
       console.error("Error fetching conversations:", error);
     } finally {
-      setIsLoading(false);
+      cursor ? setLoadingMoreConvs(false) : setIsLoading(false);
     }
   }, [currentUser?._id, onlineUsers]);
 
