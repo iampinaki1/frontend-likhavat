@@ -187,51 +187,87 @@ export function MessagesPage() {
   const loadMessagesForConversation = useCallback(
     async (conversation) => {
       if (!currentUser?._id) return;
-
-      setIsLoading(true);
+      setMsgLoading(true);
+      setMsgCursor(null);
+      setMsgHasMore(false);
       try {
-        // Ensure userId is properly converted to string
         const userId = conversation.userId.toString ? conversation.userId.toString() : conversation.userId;
         const response = await api.get(`/messages/${userId}`);
+        const { messages: msgs, nextCursor } = response.data;
 
-        const transformedMessages = response.data.map((msg) => ({
+        const transformed = (msgs || []).reverse().map((msg) => ({
           id: msg._id,
           senderId: msg.senderId._id,
           senderName: msg.senderId.username,
           content: msg.message,
           timestamp: new Date(msg.createdAt),
-          isOwn: msg.senderId._id.toString ? msg.senderId._id.toString() === currentUser._id.toString() : msg.senderId._id === currentUser._id,
+          isOwn: msg.senderId._id.toString() === currentUser._id.toString(),
           read: true,
         }));
 
-        setMessages(transformedMessages);
+        setMessages(transformed);
+        setMsgCursor(nextCursor || null);
+        setMsgHasMore(!!nextCursor);
+        shouldScrollBottom.current = true;
       } catch (error) {
         console.error("Error loading messages:", error);
         if (error.response?.status === 403) {
           alert("You can only message users you are following");
         }
       } finally {
-        setIsLoading(false);
+        setMsgLoading(false);
       }
     },
     [currentUser?._id]
   );
+
+  // Load older messages when scrolling up
+  const loadOlderMessages = useCallback(async () => {
+    if (!selectedConversation || !msgCursor || loadingOlder) return;
+    setLoadingOlder(true);
+    const container = messageContainerRef.current;
+    const prevScrollHeight = container?.scrollHeight || 0;
+    try {
+      const userId = selectedConversation.userId.toString ? selectedConversation.userId.toString() : selectedConversation.userId;
+      const response = await api.get(`/messages/${userId}?lastId=${msgCursor}`);
+      const { messages: msgs, nextCursor } = response.data;
+
+      const transformed = (msgs || []).reverse().map((msg) => ({
+        id: msg._id,
+        senderId: msg.senderId._id,
+        senderName: msg.senderId.username,
+        content: msg.message,
+        timestamp: new Date(msg.createdAt),
+        isOwn: msg.senderId._id.toString() === currentUser._id.toString(),
+        read: true,
+      }));
+
+      shouldScrollBottom.current = false;
+      setMessages(prev => [...transformed, ...prev]);
+      setMsgCursor(nextCursor || null);
+      setMsgHasMore(!!nextCursor);
+
+      // Restore scroll position after prepend
+      requestAnimationFrame(() => {
+        if (container) {
+          container.scrollTop = container.scrollHeight - prevScrollHeight;
+        }
+      });
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setLoadingOlder(false);
+    }
+  }, [selectedConversation, msgCursor, loadingOlder, currentUser?._id]);
 
   // Fetch following users when new chat dialog opens
   useEffect(() => {
     if (!newChatOpen || !currentUser?._id) return;
     const loadFollowing = async () => {
       try {
-        const { data } = await api.get('/user/all');
-        if (Array.isArray(data)) {
-          const filtered = data.filter(u =>
-            u._id !== currentUser._id &&
-            currentUser?.following?.some(fId =>
-              fId.toString ? fId.toString() === u._id.toString() : fId === u._id
-            )
-          );
-          setFollowingUsers(filtered);
-        }
+        const { data } = await api.get('/user/all?tab=following');
+        const users = data.users || [];
+        setFollowingUsers(users);
       } catch (err) {
         console.error(err);
       }
@@ -250,28 +286,25 @@ export function MessagesPage() {
   // Remove auto-select entirely — user must click a conversation
   // (hasAutoSelected ref kept for safety but effect removed)
 
-  // Smooth scroll to bottom
+  // Scroll to bottom only when appropriate (new message or initial load)
   useEffect(() => {
-    if (messagesEndRef.current) {
+    if (shouldScrollBottom.current && messagesEndRef.current) {
       messagesEndRef.current.scrollIntoView({ behavior: "smooth" });
     }
   }, [messages]);
 
-  // Add scroll effect to message container
+  // Scroll-up sentinel to load older messages
   useEffect(() => {
     const container = messageContainerRef.current;
-    if (container) {
-      const handleScroll = () => {
-        const { scrollTop, scrollHeight, clientHeight } = container;
-        const isNearBottom = scrollHeight - scrollTop - clientHeight < 100;
-        if (isNearBottom) {
-          // Auto-scroll styling can be applied here
-        }
-      };
-      container.addEventListener("scroll", handleScroll);
-      return () => container.removeEventListener("scroll", handleScroll);
-    }
-  }, []);
+    if (!container) return;
+    const handleScroll = () => {
+      if (container.scrollTop < 60 && msgHasMore && !loadingOlder) {
+        loadOlderMessages();
+      }
+    };
+    container.addEventListener("scroll", handleScroll, { passive: true });
+    return () => container.removeEventListener("scroll", handleScroll);
+  }, [msgHasMore, loadingOlder, loadOlderMessages]);
 
   const filteredConversations = useMemo(() => {
     return conversations.filter((conv) =>
@@ -343,6 +376,7 @@ export function MessagesPage() {
         };
 
         // Add message to UI immediately
+        shouldScrollBottom.current = true;
         setMessages((prev) => [...prev, newMessage]);
         setMessageInput("");
         setIsTyping(false);
@@ -406,6 +440,9 @@ export function MessagesPage() {
     (conversation) => {
       setSelectedConversation(conversation);
       setMessages([]);
+      setMsgCursor(null);
+      setMsgHasMore(false);
+      shouldScrollBottom.current = true;
       loadMessagesForConversation(conversation);
     },
     [loadMessagesForConversation]
@@ -781,10 +818,21 @@ export function MessagesPage() {
                 ref={messageContainerRef}
               >
                 <div className="space-y-6 max-w-4xl mx-auto w-full">
-                  {isLoading ? (
-                    <p className="text-center text-gray-500">Loading messages...</p>
+                  {msgLoading ? (
+                    <p className="text-center text-gray-500 py-8">Loading messages...</p>
                   ) : (
                     <>
+                      {/* Load older indicator */}
+                      {loadingOlder && (
+                        <div className="flex justify-center py-2">
+                          <span className="text-xs text-gray-400">Loading older messages...</span>
+                        </div>
+                      )}
+                      {!loadingOlder && msgHasMore && (
+                        <div className="flex justify-center py-1">
+                          <span className="text-xs text-gray-400">Scroll up for older messages</span>
+                        </div>
+                      )}
                       {messageGroups.map((group, groupIndex) => (
                         <div key={groupIndex}>
                           {/* Date Separator */}
