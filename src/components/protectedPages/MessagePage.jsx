@@ -763,7 +763,7 @@ export function MessagesPage() {
                     <ArrowLeft className="w-5 h-5" />
                   </button>
                   <Link
-                    to={`/profile/${selectedConversation.username}`}
+                    to={`/profile/${encodeURIComponent(selectedConversation.username)}`}
                     className="flex-shrink-0"
                   >
                     <div
@@ -790,7 +790,7 @@ export function MessagesPage() {
                     </div>
                   </Link>
                   <div className="min-w-0 flex-1">
-                    <Link to={`/profile/${selectedConversation.username}`}>
+                  <Link to={`/profile/${encodeURIComponent(selectedConversation.username)}`}>
                       <h3 className="font-semibold text-sm sm:text-base hover:underline cursor-pointer truncate">
                         {selectedConversation.username}
                       </h3>

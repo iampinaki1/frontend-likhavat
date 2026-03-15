@@ -17,6 +17,7 @@ export function PoemsPage() {
   const [loadingMore, setLoadingMore] = useState(false);
   const [loading, setLoading] = useState(true);
   const [currentIndex, setCurrentIndex] = useState(0);
+  const [currentPageIndex, setCurrentPageIndex] = useState(0);
 
   const containerRef = useRef(null);
   const contentRef = useRef(null);
@@ -74,15 +75,37 @@ export function PoemsPage() {
     finally { setLoadingMore(false); }
   }, [hasMore, loadingMore, cursor]);
 
-  const currentPoem = poems[currentIndex];
+  // Reset page index when poem changes
+  useEffect(() => {
+    setCurrentPageIndex(0);
+  }, [currentIndex]);
+
+  // Track horizontal scroll page for dots
+  useEffect(() => {
+    const el = contentRef.current;
+    if (!el) return;
+    const onScroll = () => {
+      const page = Math.round(el.scrollLeft / el.clientWidth);
+      setCurrentPageIndex(page);
+    };
+    el.addEventListener('scroll', onScroll, { passive: true });
+    return () => el.removeEventListener('scroll', onScroll);
+  }, [currentIndex, poems]);
 
   const poemPages = React.useMemo(() => {
     if (!currentPoem) return [];
     const lines = currentPoem.content.split('\n');
     const pages = [];
-    const linesPerPage = 14;
-    for (let i = 0; i < lines.length; i += linesPerPage) {
-      pages.push(lines.slice(i, i + linesPerPage).join('\n'));
+    // Fewer lines per page on first page (title takes space), more on subsequent
+    const firstPageLines = 10;
+    const otherPageLines = 16;
+    let i = 0;
+    let pageIndex = 0;
+    while (i < lines.length) {
+      const limit = pageIndex === 0 ? firstPageLines : otherPageLines;
+      pages.push(lines.slice(i, i + limit).join('\n'));
+      i += limit;
+      pageIndex++;
     }
     return pages;
   }, [currentPoem]);
@@ -242,7 +265,7 @@ export function PoemsPage() {
     const authorId = currentPoem.author?._id || currentPoem.author;
     const authorUsername = currentPoem.author?.username || currentPoem.authorName;
     try {
-      const { data } = await api.post(`/user/${authorUsername}/followunfollow`);
+      const { data } = await api.post(`/user/${encodeURIComponent(authorUsername)}/followunfollow`);
       if (data.msg === "Followed") {
         followUser(authorId);
         toast.success(`Following ${authorUsername}`);
@@ -277,7 +300,7 @@ export function PoemsPage() {
 
   const handleProfileClick = () => {
     if (!currentPoem) return;
-    navigate(`/profile/${currentPoem.author?.username || currentPoem.authorName}`);
+    navigate(`/profile/${encodeURIComponent(currentPoem.author?.username || currentPoem.authorName)}`);
   };
 
   if (loading) {
@@ -340,32 +363,37 @@ export function PoemsPage() {
             style={{
               backgroundColor: '#FFF8ED',
               border: '2px solid #E5D4C1',
-              maxHeight: '85vh'
+              height: 'min(85vh, 680px)',
             }}
           >
-            {/* Poem Content */}
+            {/* Poem Content — horizontal snap, no vertical scroll */}
             <div
               ref={contentRef}
-              className="flex overflow-x-auto snap-x snap-mandatory flex-1"
-              style={{
-                maxHeight: 'calc(85vh - 120px)',
-                scrollbarWidth: 'none',
-              }}
+              className="flex overflow-x-auto snap-x snap-mandatory flex-1 min-h-0"
+              style={{ scrollbarWidth: 'none', WebkitOverflowScrolling: 'touch' }}
             >
-              <style>{`.hide-scrollbar-local::-webkit-scrollbar { display: none; }`}</style>
+              <style>{`
+                .poem-scroll-area::-webkit-scrollbar { display: none; }
+                .poem-page { min-width: 100%; flex-shrink: 0; scroll-snap-align: center; overflow: hidden; }
+              `}</style>
               {poemPages.map((page, index) => (
-                <div key={index} className="min-w-full flex-shrink-0 snap-center p-5 sm:p-8 md:p-12 pb-6 sm:pb-8 overflow-y-auto hide-scrollbar-local" style={{ scrollbarWidth: 'none' }}>
+                <div key={index} className="poem-page p-5 sm:p-8 md:p-10 flex flex-col">
                   {index === 0 && (
-                    <div className="mb-4 sm:mb-6">
-                      <div className="inline-flex items-center rounded-full border px-2 sm:px-2.5 py-0.5 text-[10px] sm:text-xs font-semibold mb-2 sm:mb-3 border-transparent" style={{ backgroundColor: '#D4A574', color: '#FFFFFF' }}>
+                    <div className="mb-3 sm:mb-5 flex-shrink-0">
+                      <div className="inline-flex items-center rounded-full border px-2 sm:px-2.5 py-0.5 text-[10px] sm:text-xs font-semibold mb-2 border-transparent" style={{ backgroundColor: '#D4A574', color: '#FFFFFF' }}>
                         {currentPoem.subject}
                       </div>
-                      <h2 className="text-2xl sm:text-3xl md:text-4xl font-serif mb-3 sm:mb-4" style={{ color: '#333333' }}>
+                      <h2 className="text-2xl sm:text-3xl font-serif" style={{ color: '#333333' }}>
                         {currentPoem.title}
                       </h2>
                     </div>
                   )}
-                  <div className="prose prose-base sm:prose-lg max-w-none">
+                  {index > 0 && (
+                    <div className="mb-3 flex-shrink-0">
+                      <p className="text-xs text-gray-400 font-medium">Page {index + 1}</p>
+                    </div>
+                  )}
+                  <div className="flex-1 overflow-hidden">
                     <p className="whitespace-pre-wrap font-serif leading-relaxed text-gray-800 text-base sm:text-lg">
                       {page}
                     </p>
@@ -376,9 +404,18 @@ export function PoemsPage() {
 
             {/* Pagination Dots */}
             {poemPages.length > 1 && (
-              <div className="flex justify-center space-x-2 py-3 bg-opacity-90 z-10" style={{ backgroundColor: '#FFF8ED' }}>
+              <div className="flex justify-center items-center space-x-2 py-2 flex-shrink-0" style={{ backgroundColor: '#FFF8ED' }}>
                 {poemPages.map((_, i) => (
-                  <div key={i} className="w-2 h-2 rounded-full" style={{ backgroundColor: '#D4A574', opacity: 0.6 }} />
+                  <div
+                    key={i}
+                    className="rounded-full transition-all duration-300"
+                    style={{
+                      width: i === currentPageIndex ? '20px' : '8px',
+                      height: '8px',
+                      backgroundColor: '#D4A574',
+                      opacity: i === currentPageIndex ? 1 : 0.4,
+                    }}
+                  />
                 ))}
               </div>
             )}

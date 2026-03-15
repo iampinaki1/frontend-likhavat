@@ -54,7 +54,7 @@ export function ProfilePage() {
     }
     const fetchProfileUser = async () => {
       try {
-        const res = await api.get(`/user/profile/${username}`);
+        const res = await api.get(`/user/profile/${encodeURIComponent(username)}`);
         if (res.data && res.data.user) {
           setProfileUser(res.data.user);
         }
@@ -183,7 +183,7 @@ export function ProfilePage() {
     try {
       const params = new URLSearchParams({ type });
       if (cursor) params.set('lastId', cursor);
-      const { data } = await api.get(`/user/${targetUsername}/followlist?${params}`);
+      const { data } = await api.get(`/user/${encodeURIComponent(targetUsername)}/followlist?${params}`);
       if (!data.success) return;
       setModalList(prev => cursor ? [...prev, ...data.users] : data.users);
       setModalCursor(data.nextCursor);
@@ -247,7 +247,7 @@ export function ProfilePage() {
     
     setFollowLoading(true);
     try {
-      const response = await api.post(`/user/${profileUser.username}/followunfollow`);
+      const response = await api.post(`/user/${encodeURIComponent(profileUser.username)}/followunfollow`);
       
       if (response.data.msg === "Followed") {
         // Successfully followed (public profile)
@@ -420,7 +420,7 @@ export function ProfilePage() {
               {modalList.map((user, i) => (
                 <Link
                   key={user._id}
-                  to={`/profile/${user.username}`}
+                  to={`/profile/${encodeURIComponent(user.username)}`}
                   onClick={closeModal}
                   className="flex items-center gap-3 p-3 rounded-xl hover:bg-gray-50 active:bg-gray-100 transition-colors"
                   style={{

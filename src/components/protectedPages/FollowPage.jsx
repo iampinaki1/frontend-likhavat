@@ -14,7 +14,7 @@ function UserCard({ user, action, index }) {
         animationDelay: `${Math.min(index * 30, 200)}ms`,
       }}
     >
-      <Link to={`/profile/${user.username}`} className="flex-shrink-0">
+      <Link to={`/profile/${encodeURIComponent(user.username)}`} className="flex-shrink-0">
         <div className="h-12 w-12 rounded-full overflow-hidden border-2" style={{ borderColor: '#E5D4C1' }}>
           {user.profilePic ? (
             <img src={user.profilePic} alt={user.username} className="h-full w-full object-cover" />
@@ -26,7 +26,7 @@ function UserCard({ user, action, index }) {
         </div>
       </Link>
       <div className="flex-1 min-w-0">
-        <Link to={`/profile/${user.username}`} className="font-semibold text-sm hover:underline block truncate">
+        <Link to={`/profile/${encodeURIComponent(user.username)}`} className="font-semibold text-sm hover:underline block truncate">
           {user.username}
         </Link>
         <p className="text-xs text-gray-500 truncate">{user.bio || 'No bio'}</p>
@@ -318,7 +318,7 @@ export function FollowPage() {
                 className="rounded-xl border bg-white shadow-sm flex items-center gap-3 p-3 sm:p-4"
                 style={{ borderColor: '#E5D4C1', animation: 'slideIn 0.2s ease both', animationDelay: `${Math.min(i * 30, 200)}ms` }}
               >
-                <Link to={`/profile/${request.sender?.username}`} className="flex-shrink-0">
+                <Link to={`/profile/${encodeURIComponent(request.sender?.username)}`} className="flex-shrink-0">
                   <div className="h-12 w-12 rounded-full overflow-hidden border-2" style={{ borderColor: '#E5D4C1' }}>
                     {request.sender?.profilePic ? (
                       <img src={request.sender.profilePic} alt={request.sender.username} className="h-full w-full object-cover" />
@@ -330,7 +330,7 @@ export function FollowPage() {
                   </div>
                 </Link>
                 <div className="flex-1 min-w-0">
-                  <Link to={`/profile/${request.sender?.username}`} className="font-semibold text-sm hover:underline block truncate">
+                  <Link to={`/profile/${encodeURIComponent(request.sender?.username)}`} className="font-semibold text-sm hover:underline block truncate">
                     {request.sender?.username}
                   </Link>
                   <p className="text-xs text-gray-500 truncate">{request.sender?.bio || 'Sent you a follow request'}</p>

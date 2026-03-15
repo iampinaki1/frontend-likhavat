@@ -29,8 +29,8 @@ export function HomePage() {
     .filter(
       (script) =>
         script.visibility === "public" ||
-        script.author === currentUser?.id ||
-        script.collaborators.includes(currentUser?.id || "")
+        (script.author?._id || script.author)?.toString() === (currentUser?._id || currentUser?.id)?.toString() ||
+        (script.allowedUsers || []).some(u => (u._id || u)?.toString() === (currentUser?._id || currentUser?.id)?.toString())
     )
     .sort(
       (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
@@ -101,7 +101,7 @@ export function HomePage() {
 
             <div>
 
-              <Link to={`/profile/${item.author?.username || ""}`} className="font-semibold hover:underline">
+              <Link to={`/profile/${encodeURIComponent(item.author?.username || "")}`} className="font-semibold hover:underline">
                 {item.author?.username || "Unknown"}
               </Link>
 
@@ -131,7 +131,7 @@ export function HomePage() {
           />
         )}
 
-        <Link to={item.type === "book" ? `/book/${item.id}` : `/script/${item.id}`}>
+        <Link to={item.type === "book" ? `/book/${item._id}` : `/script/${item._id}`}>
           <h2 className="text-2xl font-semibold hover:text-blue-600">
             {item.title}
           </h2>
@@ -142,24 +142,24 @@ export function HomePage() {
         <div className="flex items-center space-x-4">
 
           <button
-            onClick={() => handleLike(item.id || item._id, item.type)}
+            onClick={() => handleLike(item._id, item.type)}
             className="flex items-center space-x-1"
             title="Like"
           >
-            {item.likes.includes(currentUser?.id || currentUser?._id || "") ? (
+            {(item.likes || []).some(l => (l._id || l)?.toString() === (currentUser?._id || currentUser?.id)?.toString()) ? (
               <BookHeart className="w-5 h-5 text-red-500" />
             ) : (
               <Book className="w-5 h-5" />
             )}
-            <span>{item.likes.length}</span>
+            <span>{(item.likes || []).length}</span>
           </button>
 
           <button
-            onClick={() => handleBookmark(item.id || item._id, item.type)}
+            onClick={() => handleBookmark(item._id, item.type)}
             className="flex items-center space-x-1"
             title="Bookmark"
           >
-            {(item.type === "book" ? (currentUser?.bookmarksBook || []) : (currentUser?.bookmarksScript || [])).includes(item.id || item._id) ? (
+            {(item.type === "book" ? (currentUser?.bookmarksBook || []) : (currentUser?.bookmarksScript || [])).includes(item._id) ? (
               <BookOpenCheck className="w-5 h-5 text-blue-500" />
             ) : (
               <BookOpen className="w-5 h-5" />
@@ -167,7 +167,7 @@ export function HomePage() {
           </button>
 
           <button
-            onClick={() => toggleCommentsVisibility(item.id, item.type)}
+            onClick={() => toggleCommentsVisibility(item._id, item.type)}
             className="flex items-center space-x-1"
           >
             <MessageCircle className="w-5 h-5" />
@@ -175,10 +175,10 @@ export function HomePage() {
           </button>
 
           <button
-            onClick={() => toggleCommentsVisibility(item.id, item.type)}
+            onClick={() => toggleCommentsVisibility(item._id, item.type)}
             className="flex items-center space-x-1 ml-auto"
           >
-            {showComments[item.id] ? (
+            {showComments[item._id] ? (
               <>
                 <EyeOff className="w-5 h-5" />
                 <span>Hide</span>
@@ -193,24 +193,24 @@ export function HomePage() {
 
         </div>
 
-        {showComments[item.id] && (
+        {showComments[item._id] && (
 
           <div className="mt-4 space-y-4 border-t pt-4">
 
             <textarea
               placeholder="Add a comment..."
-              value={commentContent[item.id] || ""}
+              value={commentContent[item._id] || ""}
               onChange={(e) =>
                 setCommentContent({
                   ...commentContent,
-                  [item.id]: e.target.value,
+                  [item._id]: e.target.value,
                 })
               }
               className="w-full border rounded-md p-2"
             />
 
             <button
-              onClick={() => handleComment(item.id, item.type)}
+              onClick={() => handleComment(item._id, item.type)}
               className="bg-[#D4A574] text-white px-3 py-1 rounded"
             >
               Post Comment
@@ -219,10 +219,10 @@ export function HomePage() {
             <div className="max-h-72 overflow-y-auto pr-2 mt-4 space-y-2">
               {commentsArray.map((comment, index) => (
 
-                <div key={comment.id || comment._id || index} className="text-sm">
+                <div key={comment._id || index} className="text-sm">
 
                   <Link
-                    to={`/profile/${comment.author?.username || comment.username}`}
+                    to={`/profile/${encodeURIComponent(comment.author?.username || comment.username)}`}
                     className="font-semibold"
                   >
                     {comment.author?.username || comment.username}
@@ -234,9 +234,9 @@ export function HomePage() {
 
               ))}
 
-              {commentCursors[item.id] && (
+              {commentCursors[item._id] && (
                 <button
-                  onClick={() => loadMoreComments(item.id, item.type)}
+                  onClick={() => loadMoreComments(item._id, item.type)}
                   className="text-sm text-blue-500 hover:underline mt-2 inline-block w-full text-center p-2"
                 >
                   Load More Comments

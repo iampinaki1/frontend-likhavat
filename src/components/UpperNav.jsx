@@ -109,8 +109,7 @@ function UpperNav() {
 
               <hr />
 
-              <Link
-                to={`/profile/${currentUser?.username}`}
+              <Link to={`/profile/${encodeURIComponent(currentUser?.username)}`}
                 className="flex items-center px-3 py-2 hover:bg-gray-100 rounded"
               >
                 <User className="w-4 h-4 mr-2" />

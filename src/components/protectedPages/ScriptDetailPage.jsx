@@ -347,7 +347,7 @@ export function ScriptDetailPage() {
 
           <h1 className="text-3xl font-semibold mb-2">{script.title}</h1>
 
-          <Link to={`/profile/${script.author?.username}`} className="text-sm hover:underline">
+          <Link to={`/profile/${encodeURIComponent(script.author?.username)}`} className="text-sm hover:underline">
             by {script.author?.username}
           </Link>
 
@@ -548,7 +548,7 @@ export function ScriptDetailPage() {
                 <div className="h-8 w-8 rounded-full bg-gray-200 flex items-center justify-center text-sm font-medium">
                   {name.charAt(0).toUpperCase()}
                 </div>
-                <Link to={`/profile/${u.username}`} className="text-sm hover:underline">
+                <Link to={`/profile/${encodeURIComponent(u.username)}`} className="text-sm hover:underline">
                   {name}
                 </Link>
               </div>
@@ -584,7 +584,7 @@ export function ScriptDetailPage() {
                 style={{backgroundColor:"#FFF8ED",borderColor:"#E5D4C1"}}
               >
                 <Link
-                  to={`/profile/${request.sender?.username}`}
+                  to={`/profile/${encodeURIComponent(request.sender?.username)}`}
                   className="font-semibold hover:underline flex items-center gap-2"
                 >
                   <div className="h-8 w-8 rounded-full bg-gray-200 flex items-center justify-center">
