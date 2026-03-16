@@ -260,14 +260,27 @@ export function MessagesPage() {
     }
   }, [selectedConversation, msgCursor, loadingOlder, currentUser?._id]);
 
-  // Fetch following users when new chat dialog opens
+  // Fetch following users on mount + when new chat dialog opens
+  useEffect(() => {
+    if (!currentUser?._id) return;
+    const loadFollowing = async () => {
+      try {
+        const { data } = await api.get('/user/all?tab=following');
+        setFollowingUsers(data.users || []);
+      } catch (err) {
+        console.error(err);
+      }
+    };
+    loadFollowing();
+  }, [currentUser?._id]);
+
+  // Re-fetch when dialog opens to catch any changes since mount
   useEffect(() => {
     if (!newChatOpen || !currentUser?._id) return;
     const loadFollowing = async () => {
       try {
         const { data } = await api.get('/user/all?tab=following');
-        const users = data.users || [];
-        setFollowingUsers(users);
+        setFollowingUsers(data.users || []);
       } catch (err) {
         console.error(err);
       }
@@ -466,10 +479,8 @@ export function MessagesPage() {
 
   const handleStartNewChat = useCallback(
     (user) => {
-      // Check if user is already in following list
-      if (!currentUser?.following?.some(fId => 
-        fId.toString ? fId.toString() === user._id.toString() : fId === user._id
-      )) {
+      // Use freshly-fetched followingUsers list (not stale context) to check follow status
+      if (!followingUsers.some(u => u._id?.toString() === user._id?.toString())) {
         alert("You can only message users you are following");
         return;
       }
@@ -495,7 +506,7 @@ export function MessagesPage() {
 
       setNewChatOpen(false);
     },
-    [conversations, currentUser?.following, currentUser?._id, handleSelectConversation, onlineUsers]
+    [conversations, followingUsers, handleSelectConversation, onlineUsers]
   );
 
   if (!currentUser) {

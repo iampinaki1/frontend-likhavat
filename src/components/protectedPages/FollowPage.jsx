@@ -49,7 +49,7 @@ export function FollowPage() {
 
   // version bump resets everything when search or user changes
   const [fetchVersion, setFetchVersion] = useState(0);
-  const loaderRef = useRef(null);
+  const observerRef = useRef(null);
   // track which (tab, version) combos have been fetched
   const fetchedRef = useRef({});
   const currentUserIdRef = useRef(currentUser?._id);
@@ -124,8 +124,12 @@ export function FollowPage() {
   useEffect(() => { searchQueryRef.current = searchQuery; }, [searchQuery]);
   useEffect(() => { fetchVersionRef.current = fetchVersion; }, [fetchVersion]);
 
-  useEffect(() => {
-    const el = loaderRef.current;
+  // Callback ref — re-attaches IntersectionObserver whenever the sentinel mounts/unmounts
+  const sentinelRef = useCallback((el) => {
+    if (observerRef.current) {
+      observerRef.current.disconnect();
+      observerRef.current = null;
+    }
     if (!el) return;
     const observer = new IntersectionObserver(entries => {
       if (!entries[0].isIntersecting) return;
@@ -134,8 +138,9 @@ export function FollowPage() {
       fetchPage(tab, cursorsRef.current[tab], searchQueryRef.current);
     }, { threshold: 0.1 });
     observer.observe(el);
-    return () => observer.disconnect();
+    observerRef.current = observer;
   }, [fetchPage]);
+
 
   const handleFollow = async (username, userId, isPrivate) => {
     if (loadingState[userId]) return;
@@ -304,12 +309,18 @@ export function FollowPage() {
                 {list.map((user, i) => (
                   <UserCard key={user._id} user={user} index={i} action={renderAction(user, activeTab)} />
                 ))}
-                <div ref={loaderRef} className="flex justify-center py-4">
-                  {isLoading && <Loader2 className="w-5 h-5 animate-spin text-gray-400" />}
-                </div>
               </>
             );
           })()}
+
+          {/* Sentinel always rendered (outside IIFE) so IntersectionObserver can always attach */}
+          {activeTab !== 'requests' && (
+            <div ref={sentinelRef} className="flex justify-center py-4">
+              {tabLoading[activeTab] && lists[activeTab].length > 0 && (
+                <Loader2 className="w-5 h-5 animate-spin text-gray-400" />
+              )}
+            </div>
+          )}
 
           {activeTab === 'requests' && (
             requests.length > 0 ? requests.map((request, i) => (
