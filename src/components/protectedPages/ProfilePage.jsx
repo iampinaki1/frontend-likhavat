@@ -20,8 +20,31 @@ export function ProfilePage() {
   const [modalHasMore, setModalHasMore] = useState(false);
   const [modalLoading, setModalLoading] = useState(false);
   const [modalType, setModalType] = useState(null); // 'followers' | 'following'
-  const modalLoaderRef = useRef(null);
+  const modalObserverRef = useRef(null);
+  const modalLoaderRef = useCallback((el) => {
+    if (modalObserverRef.current) {
+      modalObserverRef.current.disconnect();
+      modalObserverRef.current = null;
+    }
+    if (!el) return;
+    const observer = new IntersectionObserver(entries => {
+      if (entries[0].isIntersecting && modalHasMoreRef.current && !modalLoadingRef.current) {
+        fetchModalPage(modalTypeRef.current, modalCursorRef.current, modalTargetUsernameRef.current);
+      }
+    }, { threshold: 0.1 });
+    observer.observe(el);
+    modalObserverRef.current = observer;
+  }, [fetchModalPage]);
   const modalTargetUsernameRef = useRef(null);
+  const modalHasMoreRef = useRef(false);
+  const modalLoadingRef = useRef(false);
+  const modalCursorRef = useRef(null);
+  const modalTypeRef = useRef(null);
+
+  useEffect(() => { modalHasMoreRef.current = modalHasMore; }, [modalHasMore]);
+  useEffect(() => { modalLoadingRef.current = modalLoading; }, [modalLoading]);
+  useEffect(() => { modalCursorRef.current = modalCursor; }, [modalCursor]);
+  useEffect(() => { modalTypeRef.current = modalType; }, [modalType]);
   
   const [userBooks, setUserBooks] = useState([]);
   const [userScripts, setUserScripts] = useState([]);
@@ -215,18 +238,7 @@ export function ProfilePage() {
     setModalCursor(null);
   };
 
-  // IntersectionObserver for modal infinite scroll
-  useEffect(() => {
-    const el = modalLoaderRef.current;
-    if (!el || !modalHasMore || modalLoading) return;
-    const observer = new IntersectionObserver(entries => {
-      if (entries[0].isIntersecting) {
-        fetchModalPage(modalType, modalCursor, modalTargetUsernameRef.current);
-      }
-    }, { threshold: 0.1 });
-    observer.observe(el);
-    return () => observer.disconnect();
-  }, [modalHasMore, modalLoading, modalCursor, modalType, fetchModalPage]);
+  // IntersectionObserver for modal infinite scroll — handled by modalLoaderRef callback ref above
 
   // Check if current user is following this profile user
   const isFollowing = currentUser?.following && profileUser?._id

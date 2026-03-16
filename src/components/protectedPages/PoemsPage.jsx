@@ -1,8 +1,28 @@
-import React, { useState, useRef, useEffect, useCallback } from "react";
+import React, { useState, useRef, useEffect, useCallback, useMemo } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { useApp, api } from "../../context/Appcontext.jsx";
 import { Heart, User, ChevronUp, ChevronDown, Loader2, Trash2 } from "lucide-react";
 import { toast } from "sonner";
+
+// Estimate how many lines fit in the content area based on viewport
+function useLinesPerPage() {
+  const [lines, setLines] = useState({ first: 8, other: 13 });
+  useEffect(() => {
+    const calc = () => {
+      // Available height = viewport - navbar(64) - author bar(~72) - dots(~24) - padding(~40)
+      const available = window.innerHeight - 64 - 72 - 24 - 40;
+      // Approximate line height: font ~16px * leading 1.8 = ~29px on mobile, ~32px on desktop
+      const lineH = window.innerWidth < 640 ? 26 : 30;
+      const totalLines = Math.max(4, Math.floor(available / lineH));
+      // First page has title/badge taking ~3 lines worth of space
+      setLines({ first: Math.max(4, totalLines - 3), other: totalLines });
+    };
+    calc();
+    window.addEventListener('resize', calc);
+    return () => window.removeEventListener('resize', calc);
+  }, []);
+  return lines;
+}
 
 export function PoemsPage() {
 
@@ -19,6 +39,7 @@ export function PoemsPage() {
   const [currentIndex, setCurrentIndex] = useState(0);
   const [currentPageIndex, setCurrentPageIndex] = useState(0);
 
+  const linesPerPage = useLinesPerPage();
   const currentPoem = poems[currentIndex] || null;
 
   const containerRef = useRef(null);
@@ -98,30 +119,35 @@ export function PoemsPage() {
     if (!currentPoem) return [];
     const lines = currentPoem.content.split('\n');
     const pages = [];
-    // Fewer lines per page on first page (title takes space), more on subsequent
-    const firstPageLines = 10;
-    const otherPageLines = 16;
     let i = 0;
     let pageIndex = 0;
     while (i < lines.length) {
-      const limit = pageIndex === 0 ? firstPageLines : otherPageLines;
+      const limit = pageIndex === 0 ? linesPerPage.first : linesPerPage.other;
       pages.push(lines.slice(i, i + limit).join('\n'));
       i += limit;
       pageIndex++;
     }
     return pages;
-  }, [currentPoem]);
+  }, [currentPoem, linesPerPage]);
 
 
-  const isFollowing =
-    currentUser?.following.includes(currentPoem?.author?._id || currentPoem?.author) || false;
+  const isFollowing = currentUser?.following
+    ? currentUser.following.some(id =>
+        (id?._id || id)?.toString() === (currentPoem?.author?._id || currentPoem?.author)?.toString()
+      )
+    : false;
 
-  const hasRequested =
-    currentUser?.sentRequests?.includes(currentPoem?.author?._id || currentPoem?.author) || false;
+  const hasRequested = currentUser?.sentRequests
+    ? currentUser.sentRequests.some(id =>
+        (id?._id || id)?.toString() === (currentPoem?.author?._id || currentPoem?.author)?.toString()
+      )
+    : false;
 
   const isLiked =
     currentPoem && currentUser
-      ? currentPoem.likes.includes(currentUser._id || currentUser.id)
+      ? (currentPoem.likes || []).some(id =>
+          (id?._id || id)?.toString() === (currentUser._id || currentUser.id)?.toString()
+        )
       : false;
 
   const goToNext = useCallback(() => {
@@ -365,7 +391,8 @@ export function PoemsPage() {
             style={{
               backgroundColor: '#FFF8ED',
               border: '2px solid #E5D4C1',
-              height: 'min(85vh, 680px)',
+              height: 'calc(100% - 32px)',
+              maxHeight: '720px',
             }}
           >
             {/* Poem Content — horizontal snap, no vertical scroll */}
@@ -379,24 +406,24 @@ export function PoemsPage() {
                 .poem-page { min-width: 100%; flex-shrink: 0; scroll-snap-align: center; overflow: hidden; }
               `}</style>
               {poemPages.map((page, index) => (
-                <div key={index} className="poem-page p-5 sm:p-8 md:p-10 flex flex-col">
+                <div key={index} className="poem-page p-4 sm:p-6 md:p-10 flex flex-col">
                   {index === 0 && (
-                    <div className="mb-3 sm:mb-5 flex-shrink-0">
-                      <div className="inline-flex items-center rounded-full border px-2 sm:px-2.5 py-0.5 text-[10px] sm:text-xs font-semibold mb-2 border-transparent" style={{ backgroundColor: '#D4A574', color: '#FFFFFF' }}>
+                    <div className="mb-2 sm:mb-4 flex-shrink-0">
+                      <div className="inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] sm:text-xs font-semibold mb-1.5 border-transparent" style={{ backgroundColor: '#D4A574', color: '#FFFFFF' }}>
                         {currentPoem.subject}
                       </div>
-                      <h2 className="text-2xl sm:text-3xl font-serif" style={{ color: '#333333' }}>
+                      <h2 className="text-xl sm:text-2xl md:text-3xl font-serif leading-tight" style={{ color: '#333333' }}>
                         {currentPoem.title}
                       </h2>
                     </div>
                   )}
                   {index > 0 && (
-                    <div className="mb-3 flex-shrink-0">
-                      <p className="text-xs text-gray-400 font-medium">Page {index + 1}</p>
+                    <div className="mb-2 flex-shrink-0">
+                      <p className="text-[10px] sm:text-xs text-gray-400 font-medium">Page {index + 1}</p>
                     </div>
                   )}
                   <div className="flex-1 overflow-hidden">
-                    <p className="whitespace-pre-wrap font-serif leading-relaxed text-gray-800 text-base sm:text-lg">
+                    <p className="whitespace-pre-wrap font-serif leading-relaxed text-gray-800 text-sm sm:text-base md:text-lg">
                       {page}
                     </p>
                   </div>
@@ -424,18 +451,18 @@ export function PoemsPage() {
 
             {/* Author Section at Bottom */}
             <div
-              className="p-3 sm:p-4 border-t flex-shrink-0"
+              className="px-3 py-2 sm:p-4 border-t flex-shrink-0"
               style={{ backgroundColor: '#FFFFFF', borderColor: '#E5D4C1' }}
             >
               <div className="flex items-center justify-between">
-                <div className="flex items-center space-x-2 sm:space-x-3 flex-1">
-                  <button onClick={handleProfileClick} className="focus:outline-none">
-                    <div className="relative flex-shrink-0 h-10 w-10 sm:h-12 sm:w-12 rounded-full overflow-hidden cursor-pointer hover:opacity-80 transition-opacity">
+                <div className="flex items-center space-x-2 flex-1 min-w-0">
+                  <button onClick={handleProfileClick} className="focus:outline-none flex-shrink-0">
+                    <div className="relative h-8 w-8 sm:h-10 sm:w-10 rounded-full overflow-hidden cursor-pointer hover:opacity-80 transition-opacity">
                       {currentPoem.author?.profilePic || currentPoem.authorProfilePic ? (
                         <img src={currentPoem.author?.profilePic || currentPoem.authorProfilePic} alt={currentPoem.author?.username || currentPoem.authorName} className="aspect-square h-full w-full object-cover" />
                       ) : (
                         <div className="flex h-full w-full items-center justify-center font-medium" style={{ backgroundColor: '#D4A574', color: '#FFFFFF' }}>
-                          <User className="w-5 h-5 sm:w-6 sm:h-6" />
+                          <User className="w-4 h-4 sm:w-5 sm:h-5" />
                         </div>
                       )}
                     </div>
@@ -443,11 +470,11 @@ export function PoemsPage() {
                   <div className="flex-1 min-w-0">
                     <button
                       onClick={handleProfileClick}
-                      className="font-semibold text-sm sm:text-base hover:underline focus:outline-none text-left truncate block w-full"
+                      className="font-semibold text-xs sm:text-sm hover:underline focus:outline-none text-left truncate block w-full"
                     >
                       {currentPoem.author?.username || currentPoem.authorName}
                     </button>
-                    <p className="text-xs sm:text-sm text-gray-500">
+                    <p className="text-[10px] sm:text-xs text-gray-500">
                       {currentPoem.likes.length} {currentPoem.likes.length === 1 ? 'like' : 'likes'}
                     </p>
                   </div>
@@ -456,14 +483,14 @@ export function PoemsPage() {
                   hasRequested ? (
                     <button
                       disabled
-                      className="inline-flex items-center justify-center rounded-md text-xs sm:text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:opacity-50 disabled:pointer-events-none ring-offset-background h-8 sm:h-9 px-2 sm:px-3 border whitespace-nowrap ml-2 bg-gray-200 text-gray-500"
+                      className="text-xs font-medium h-7 sm:h-8 px-2 sm:px-3 rounded-md border whitespace-nowrap ml-2 bg-gray-200 text-gray-500 flex-shrink-0"
                     >
                       Requested
                     </button>
                   ) : (
                     <button
                       onClick={handleFollow}
-                      className="inline-flex items-center justify-center rounded-md text-xs sm:text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none ring-offset-background hover:bg-gray-100 h-8 sm:h-9 px-2 sm:px-3 border whitespace-nowrap ml-2"
+                      className="text-xs sm:text-sm font-medium h-7 sm:h-8 px-2 sm:px-3 rounded-md border whitespace-nowrap ml-2 flex-shrink-0 transition-colors"
                       style={
                         isFollowing
                           ? { borderColor: '#D4A574', color: '#D4A574', backgroundColor: 'transparent' }
