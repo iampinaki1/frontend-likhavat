@@ -19,6 +19,8 @@ export function PoemsPage() {
   const [currentIndex, setCurrentIndex] = useState(0);
   const [currentPageIndex, setCurrentPageIndex] = useState(0);
 
+  const currentPoem = poems[currentIndex] || null;
+
   const containerRef = useRef(null);
   const contentRef = useRef(null);
   const isScrolling = useRef(false);
