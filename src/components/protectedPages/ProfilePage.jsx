@@ -21,20 +21,6 @@ export function ProfilePage() {
   const [modalLoading, setModalLoading] = useState(false);
   const [modalType, setModalType] = useState(null); // 'followers' | 'following'
   const modalObserverRef = useRef(null);
-  const modalLoaderRef = useCallback((el) => {
-    if (modalObserverRef.current) {
-      modalObserverRef.current.disconnect();
-      modalObserverRef.current = null;
-    }
-    if (!el) return;
-    const observer = new IntersectionObserver(entries => {
-      if (entries[0].isIntersecting && modalHasMoreRef.current && !modalLoadingRef.current) {
-        fetchModalPage(modalTypeRef.current, modalCursorRef.current, modalTargetUsernameRef.current);
-      }
-    }, { threshold: 0.1 });
-    observer.observe(el);
-    modalObserverRef.current = observer;
-  }, [fetchModalPage]);
   const modalTargetUsernameRef = useRef(null);
   const modalHasMoreRef = useRef(false);
   const modalLoadingRef = useRef(false);
@@ -237,6 +223,22 @@ export function ProfilePage() {
     setModalList([]);
     setModalCursor(null);
   };
+
+  // Callback ref — re-attaches IntersectionObserver whenever the sentinel mounts/unmounts
+  const modalLoaderRef = useCallback((el) => {
+    if (modalObserverRef.current) {
+      modalObserverRef.current.disconnect();
+      modalObserverRef.current = null;
+    }
+    if (!el) return;
+    const observer = new IntersectionObserver(entries => {
+      if (entries[0].isIntersecting && modalHasMoreRef.current && !modalLoadingRef.current) {
+        fetchModalPage(modalTypeRef.current, modalCursorRef.current, modalTargetUsernameRef.current);
+      }
+    }, { threshold: 0.1 });
+    observer.observe(el);
+    modalObserverRef.current = observer;
+  }, [fetchModalPage]);
 
   // IntersectionObserver for modal infinite scroll — handled by modalLoaderRef callback ref above
 

@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect, useCallback, useMemo } from "react";
+import React, { useState, useRef, useEffect, useCallback } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { useApp, api } from "../../context/Appcontext.jsx";
 import { Heart, User, ChevronUp, ChevronDown, Loader2, Trash2 } from "lucide-react";
@@ -44,8 +44,10 @@ export function PoemsPage() {
 
   const containerRef = useRef(null);
   const contentRef = useRef(null);
+  const poemTextRef = useRef(null); // ref to the inner scrollable poem text div
   const isScrolling = useRef(false);
   const touchStartY = useRef(null);
+  const touchStartX = useRef(null);
 
   // Initial load
   useEffect(() => {
@@ -193,16 +195,39 @@ export function PoemsPage() {
 
     const handleTouchStart = (e) => {
       touchStartY.current = e.touches[0].clientY;
+      touchStartX.current = e.touches[0].clientX;
     };
 
     const handleTouchEnd = (e) => {
       if (touchStartY.current === null) return;
-      const delta = touchStartY.current - e.changedTouches[0].clientY;
-      if (Math.abs(delta) > 50) {
-        if (delta > 0) goToNext();
+      const deltaY = touchStartY.current - e.changedTouches[0].clientY;
+      const deltaX = Math.abs(touchStartX.current - e.changedTouches[0].clientX);
+
+      touchStartY.current = null;
+      touchStartX.current = null;
+
+      // Ignore if horizontal swipe is dominant (user swiping poem pages)
+      if (deltaX > Math.abs(deltaY)) return;
+
+      // Ignore if the touch target is inside the poem-text scroll area
+      // and that area still has room to scroll
+      const textEl = poemTextRef.current;
+      if (textEl) {
+        const scrollable = textEl.scrollHeight > textEl.clientHeight + 2;
+        if (scrollable) {
+          const atTop = textEl.scrollTop <= 0;
+          const atBottom = textEl.scrollTop + textEl.clientHeight >= textEl.scrollHeight - 2;
+          // If scrolling down but not at bottom, let inner scroll handle it
+          if (deltaY > 0 && !atBottom) return;
+          // If scrolling up but not at top, let inner scroll handle it
+          if (deltaY < 0 && !atTop) return;
+        }
+      }
+
+      if (Math.abs(deltaY) > 40) {
+        if (deltaY > 0) goToNext();
         else goToPrevious();
       }
-      touchStartY.current = null;
     };
 
     container.addEventListener("touchstart", handleTouchStart, { passive: true });
@@ -215,41 +240,40 @@ export function PoemsPage() {
   }, [goToNext, goToPrevious]);
 
   useEffect(() => {
-
     const handleWheel = (e) => {
-
       if (isScrolling.current) return;
 
-      // Check if vertical scroll is dominant
-      if (Math.abs(e.deltaY) > Math.abs(e.deltaX)) {
-        e.preventDefault();
-        isScrolling.current = true;
+      // Only intercept vertical-dominant wheel events
+      if (Math.abs(e.deltaY) <= Math.abs(e.deltaX)) return;
 
-        if (e.deltaY > 0) {
-          goToNext();
-        } else {
-          goToPrevious();
+      // If the poem text area is scrollable and not at its boundary, let it scroll
+      const textEl = poemTextRef.current;
+      if (textEl) {
+        const scrollable = textEl.scrollHeight > textEl.clientHeight + 2;
+        if (scrollable) {
+          const atBottom = textEl.scrollTop + textEl.clientHeight >= textEl.scrollHeight - 2;
+          const atTop = textEl.scrollTop <= 0;
+          if (e.deltaY > 0 && !atBottom) return;
+          if (e.deltaY < 0 && !atTop) return;
         }
-
-        setTimeout(() => {
-          isScrolling.current = false;
-        }, 800);
       }
 
+      e.preventDefault();
+      isScrolling.current = true;
+
+      if (e.deltaY > 0) goToNext();
+      else goToPrevious();
+
+      setTimeout(() => { isScrolling.current = false; }, 500);
     };
 
     const container = containerRef.current;
-
     if (container) {
       container.addEventListener("wheel", handleWheel, { passive: false });
     }
-
     return () => {
-      if (container) {
-        container.removeEventListener("wheel", handleWheel);
-      }
+      if (container) container.removeEventListener("wheel", handleWheel);
     };
-
   }, [goToNext, goToPrevious]);
 
   useEffect(() => {
@@ -379,7 +403,7 @@ export function PoemsPage() {
     <div
       ref={containerRef}
       className="fixed inset-0 overflow-hidden"
-      style={{ top: "64px", overscrollBehavior: "none", touchAction: "none" }}
+      style={{ top: "64px", overscrollBehavior: "none" }}
     >
 
       {/* Poem Container */}
@@ -404,6 +428,9 @@ export function PoemsPage() {
               <style>{`
                 .poem-scroll-area::-webkit-scrollbar { display: none; }
                 .poem-page { min-width: 100%; flex-shrink: 0; scroll-snap-align: center; overflow: hidden; }
+                .poem-page .poem-text::-webkit-scrollbar { width: 3px; }
+                .poem-page .poem-text::-webkit-scrollbar-thumb { background: #E5D4C1; border-radius: 2px; }
+                .poem-page .poem-text::-webkit-scrollbar-track { background: transparent; }
               `}</style>
               {poemPages.map((page, index) => (
                 <div key={index} className="poem-page p-4 sm:p-6 md:p-10 flex flex-col">
@@ -422,8 +449,12 @@ export function PoemsPage() {
                       <p className="text-[10px] sm:text-xs text-gray-400 font-medium">Page {index + 1}</p>
                     </div>
                   )}
-                  <div className="flex-1 overflow-hidden">
-                    <p className="whitespace-pre-wrap font-serif leading-relaxed text-gray-800 text-sm sm:text-base md:text-lg">
+                  <div
+                    ref={index === currentPageIndex ? poemTextRef : null}
+                    className="poem-text flex-1 overflow-y-auto"
+                    style={{ scrollbarWidth: 'thin', scrollbarColor: '#E5D4C1 transparent' }}
+                  >
+                    <p className="whitespace-pre-wrap font-serif leading-relaxed text-gray-800 text-sm sm:text-base md:text-lg pb-2">
                       {page}
                     </p>
                   </div>
