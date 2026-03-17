@@ -181,14 +181,23 @@ export function PoemsPage() {
 
   }, [currentIndex]);
 
+  const touchStartTime = useRef(null);
+
   // Prevent pull-to-refresh and browser overscroll while on this page
   useEffect(() => {
     const prev = document.body.style.overscrollBehavior;
+    const prevHtml = document.documentElement.style.overscrollBehavior;
     document.body.style.overscrollBehavior = "none";
-    return () => { document.body.style.overscrollBehavior = prev; };
+    document.documentElement.style.overscrollBehavior = "none";
+    return () => {
+      document.body.style.overscrollBehavior = prev;
+      document.documentElement.style.overscrollBehavior = prevHtml;
+    };
   }, []);
 
-  // Touch scroll for mobile
+  // Touch scroll:
+  //   slow / short  → scroll poem text within the current page
+  //   fast / long   → navigate to next/prev poem
   useEffect(() => {
     const container = containerRef.current;
     if (!container) return;
@@ -196,84 +205,97 @@ export function PoemsPage() {
     const handleTouchStart = (e) => {
       touchStartY.current = e.touches[0].clientY;
       touchStartX.current = e.touches[0].clientX;
+      touchStartTime.current = Date.now();
+    };
+
+    const handleTouchMove = (e) => {
+      // Block pull-to-refresh when at first poem and pulling down
+      if (touchStartY.current !== null) {
+        const dy = touchStartY.current - e.touches[0].clientY;
+        if (dy < 0 && currentIndex === 0) {
+          const textEl = poemTextRef.current;
+          const atTop = !textEl || textEl.scrollTop <= 0;
+          if (atTop) e.preventDefault();
+        }
+      }
     };
 
     const handleTouchEnd = (e) => {
       if (touchStartY.current === null) return;
+
       const deltaY = touchStartY.current - e.changedTouches[0].clientY;
       const deltaX = Math.abs(touchStartX.current - e.changedTouches[0].clientX);
+      const elapsed = Date.now() - (touchStartTime.current || Date.now());
+      const velocity = Math.abs(deltaY) / Math.max(elapsed, 1); // px/ms
 
       touchStartY.current = null;
       touchStartX.current = null;
+      touchStartTime.current = null;
 
-      // Ignore if horizontal swipe is dominant (user swiping poem pages)
+      // Ignore horizontal-dominant swipes (page flipping)
       if (deltaX > Math.abs(deltaY)) return;
 
-      // Ignore if the touch target is inside the poem-text scroll area
-      // and that area still has room to scroll
-      const textEl = poemTextRef.current;
-      if (textEl) {
-        const scrollable = textEl.scrollHeight > textEl.clientHeight + 2;
-        if (scrollable) {
-          const atTop = textEl.scrollTop <= 0;
-          const atBottom = textEl.scrollTop + textEl.clientHeight >= textEl.scrollHeight - 2;
-          // If scrolling down but not at bottom, let inner scroll handle it
-          if (deltaY > 0 && !atBottom) return;
-          // If scrolling up but not at top, let inner scroll handle it
-          if (deltaY < 0 && !atTop) return;
-        }
-      }
+      const absDy = Math.abs(deltaY);
 
-      if (Math.abs(deltaY) > 40) {
+      // Fast swipe (velocity > 0.5 px/ms) OR long swipe (> 120px) → change poem
+      const isFast = velocity > 0.5;
+      const isLong = absDy > 120;
+
+      if (isFast || isLong) {
         if (deltaY > 0) goToNext();
         else goToPrevious();
+        return;
+      }
+
+      // Slow / short swipe → scroll the poem text area
+      if (absDy > 10) {
+        const textEl = poemTextRef.current;
+        if (textEl) {
+          // Scroll proportionally — map swipe distance to scroll amount
+          const scrollAmount = deltaY * 1.8;
+          textEl.scrollBy({ top: scrollAmount, behavior: "smooth" });
+        }
       }
     };
 
     container.addEventListener("touchstart", handleTouchStart, { passive: true });
+    container.addEventListener("touchmove", handleTouchMove, { passive: false });
     container.addEventListener("touchend", handleTouchEnd, { passive: true });
 
     return () => {
       container.removeEventListener("touchstart", handleTouchStart);
+      container.removeEventListener("touchmove", handleTouchMove);
       container.removeEventListener("touchend", handleTouchEnd);
     };
-  }, [goToNext, goToPrevious]);
+  }, [goToNext, goToPrevious, currentIndex]);
 
   useEffect(() => {
     const handleWheel = (e) => {
       if (isScrolling.current) return;
-
-      // Only intercept vertical-dominant wheel events
       if (Math.abs(e.deltaY) <= Math.abs(e.deltaX)) return;
 
-      // If the poem text area is scrollable and not at its boundary, let it scroll
-      const textEl = poemTextRef.current;
-      if (textEl) {
-        const scrollable = textEl.scrollHeight > textEl.clientHeight + 2;
-        if (scrollable) {
-          const atBottom = textEl.scrollTop + textEl.clientHeight >= textEl.scrollHeight - 2;
-          const atTop = textEl.scrollTop <= 0;
-          if (e.deltaY > 0 && !atBottom) return;
-          if (e.deltaY < 0 && !atTop) return;
-        }
+      // Fast or large wheel delta → change poem
+      const isFast = Math.abs(e.deltaY) > 80;
+      if (isFast) {
+        e.preventDefault();
+        isScrolling.current = true;
+        if (e.deltaY > 0) goToNext();
+        else goToPrevious();
+        setTimeout(() => { isScrolling.current = false; }, 600);
+        return;
       }
 
-      e.preventDefault();
-      isScrolling.current = true;
-
-      if (e.deltaY > 0) goToNext();
-      else goToPrevious();
-
-      setTimeout(() => { isScrolling.current = false; }, 500);
+      // Small wheel delta → scroll poem text
+      const textEl = poemTextRef.current;
+      if (textEl) {
+        e.preventDefault();
+        textEl.scrollBy({ top: e.deltaY * 2, behavior: "smooth" });
+      }
     };
 
     const container = containerRef.current;
-    if (container) {
-      container.addEventListener("wheel", handleWheel, { passive: false });
-    }
-    return () => {
-      if (container) container.removeEventListener("wheel", handleWheel);
-    };
+    if (container) container.addEventListener("wheel", handleWheel, { passive: false });
+    return () => { if (container) container.removeEventListener("wheel", handleWheel); };
   }, [goToNext, goToPrevious]);
 
   useEffect(() => {
