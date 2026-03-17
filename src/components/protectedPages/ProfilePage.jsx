@@ -591,7 +591,7 @@ export function ProfilePage() {
               </>
             ) : (
               <div className="rounded-xl border shadow-sm overflow-hidden bg-white">
-                <div className="p-8 text-center text-gray-500">
+                 <div className="p-8 text-center text-gray-500">
                   {isOwnProfile ? "You haven't created any scripts yet" : 'No scripts created yet'}
                 </div>
               </div>
