@@ -9,12 +9,9 @@ function useLinesPerPage() {
   const [lines, setLines] = useState({ first: 8, other: 13 });
   useEffect(() => {
     const calc = () => {
-      // Available height = viewport - navbar(64) - author bar(~72) - dots(~24) - padding(~40)
       const available = window.innerHeight - 64 - 72 - 24 - 40;
-      // Approximate line height: font ~16px * leading 1.8 = ~29px on mobile, ~32px on desktop
       const lineH = window.innerWidth < 640 ? 26 : 30;
       const totalLines = Math.max(4, Math.floor(available / lineH));
-      // First page has title/badge taking ~3 lines worth of space
       setLines({ first: Math.max(4, totalLines - 3), other: totalLines });
     };
     calc();
@@ -22,6 +19,46 @@ function useLinesPerPage() {
     return () => window.removeEventListener('resize', calc);
   }, []);
   return lines;
+}
+
+/**
+ * Binary-search the largest font size (px) where the text fits inside
+ * containerW x containerH without overflowing, using canvas for width measurement.
+ * lineHeight: multiplier (e.g. 1.7)
+ * headerH: extra height consumed by title/badge on page 0
+ */
+function fitFontSize(text, containerW, containerH, lineHeightMult, headerH, minSize, maxSize) {
+  if (!text || containerW <= 0 || containerH <= 0) return minSize;
+  const canvas = document.createElement("canvas");
+  const ctx = canvas.getContext("2d");
+  const availH = containerH - headerH;
+
+  const fits = (size) => {
+    ctx.font = `${size}px serif`;
+    const lhPx = size * lineHeightMult;
+    let totalVisualLines = 0;
+    for (const line of text.split("\n")) {
+      if (line.trim() === "") { totalVisualLines += 1; continue; }
+      const words = line.split(" ");
+      let cur = "";
+      let lineCount = 1;
+      for (const w of words) {
+        const test = cur ? cur + " " + w : w;
+        if (ctx.measureText(test).width > containerW) { lineCount++; cur = w; }
+        else cur = test;
+      }
+      totalVisualLines += lineCount;
+    }
+    return totalVisualLines * lhPx <= availH;
+  };
+
+  let lo = minSize, hi = maxSize, best = minSize;
+  while (lo <= hi) {
+    const mid = Math.floor((lo + hi) / 2);
+    if (fits(mid)) { best = mid; lo = mid + 1; }
+    else hi = mid - 1;
+  }
+  return best;
 }
 
 export function PoemsPage() {
@@ -44,10 +81,26 @@ export function PoemsPage() {
 
   const containerRef = useRef(null);
   const contentRef = useRef(null);
-  const poemTextRef = useRef(null); // ref to the inner scrollable poem text div
+  const cardRef = useRef(null);
+  const poemTextRef = useRef(null);
   const isScrolling = useRef(false);
   const touchStartY = useRef(null);
   const touchStartX = useRef(null);
+
+  const [cardDims, setCardDims] = useState({ w: 0, h: 0 });
+
+  // Measure card dimensions for font fitting
+  useEffect(() => {
+    const measure = () => {
+      if (cardRef.current) {
+        setCardDims({ w: cardRef.current.clientWidth, h: cardRef.current.clientHeight });
+      }
+    };
+    measure();
+    const ro = new ResizeObserver(measure);
+    if (cardRef.current) ro.observe(cardRef.current);
+    return () => ro.disconnect();
+  }, []);
 
   // Initial load
   useEffect(() => {
@@ -132,6 +185,24 @@ export function PoemsPage() {
     return pages;
   }, [currentPoem, linesPerPage]);
 
+  // Per-page fitted font sizes — computed once card dimensions are known
+  const pageFontSizes = React.useMemo(() => {
+    if (!poemPages.length || cardDims.w === 0 || cardDims.h === 0) return [];
+    // padding inside .poem-page: p-4 = 16px each side on mobile
+    const pad = cardDims.w < 640 ? 32 : cardDims.w < 768 ? 48 : 80; // px-4 / px-6 / px-10 * 2
+    const textW = cardDims.w - pad;
+    // available height = card height minus author bar (~56px) minus dots (~28px) minus padding top+bottom
+    const padV = cardDims.w < 640 ? 32 : 48;
+    const fixedH = 56 + 28; // author + dots
+    const textH = cardDims.h - fixedH - padV;
+    // title/badge on page 0 takes ~72px
+    const titleH = 72;
+
+    return poemPages.map((page, i) =>
+      fitFontSize(page, textW, textH, 1.7, i === 0 ? titleH : 20, 8, 26)
+    );
+  }, [poemPages, cardDims]);
+
 
   const isFollowing = currentUser?.following
     ? currentUser.following.some(id =>
@@ -182,6 +253,7 @@ export function PoemsPage() {
   }, [currentIndex]);
 
   const touchStartTime = useRef(null);
+  const swipeDirection = useRef(null); // 'horizontal' | 'vertical' | null
 
   // Prevent pull-to-refresh and browser overscroll while on this page
   useEffect(() => {
@@ -206,17 +278,28 @@ export function PoemsPage() {
       touchStartY.current = e.touches[0].clientY;
       touchStartX.current = e.touches[0].clientX;
       touchStartTime.current = Date.now();
+      swipeDirection.current = null; // reset direction lock
     };
 
     const handleTouchMove = (e) => {
-      // Block pull-to-refresh when at first poem and pulling down
-      if (touchStartY.current !== null) {
-        const dy = touchStartY.current - e.touches[0].clientY;
-        if (dy < 0 && currentIndex === 0) {
-          const textEl = poemTextRef.current;
-          const atTop = !textEl || textEl.scrollTop <= 0;
-          if (atTop) e.preventDefault();
-        }
+      if (touchStartY.current === null) return;
+
+      const dy = touchStartY.current - e.touches[0].clientY;
+      const dx = touchStartX.current - e.touches[0].clientX;
+
+      // Lock direction after 8px of movement to avoid ambiguity
+      if (!swipeDirection.current && (Math.abs(dx) > 8 || Math.abs(dy) > 8)) {
+        swipeDirection.current = Math.abs(dx) > Math.abs(dy) ? 'horizontal' : 'vertical';
+      }
+
+      // If horizontal swipe — let native scroll handle it, don't interfere
+      if (swipeDirection.current === 'horizontal') return;
+
+      // Vertical swipe — block pull-to-refresh only when pulling down at top of first poem
+      if (swipeDirection.current === 'vertical' && dy < 0 && currentIndex === 0) {
+        const textEl = poemTextRef.current;
+        const atTop = !textEl || textEl.scrollTop <= 0;
+        if (atTop) e.preventDefault();
       }
     };
 
@@ -231,6 +314,7 @@ export function PoemsPage() {
       touchStartY.current = null;
       touchStartX.current = null;
       touchStartTime.current = null;
+      swipeDirection.current = null;
 
       // Ignore horizontal-dominant swipes (page flipping)
       if (deltaX > Math.abs(deltaY)) return;
@@ -434,6 +518,7 @@ export function PoemsPage() {
         <div className="w-full max-w-2xl h-full flex flex-col justify-center px-2 sm:px-4 md:px-8">
           <div
             className="rounded-xl shadow-2xl overflow-hidden w-full flex flex-col mx-auto"
+            ref={cardRef}
             style={{
               backgroundColor: '#FFF8ED',
               border: '2px solid #E5D4C1',
@@ -476,7 +561,13 @@ export function PoemsPage() {
                     className="poem-text flex-1 overflow-y-auto"
                     style={{ scrollbarWidth: 'thin', scrollbarColor: '#E5D4C1 transparent' }}
                   >
-                    <p className="whitespace-pre-wrap font-serif leading-relaxed text-gray-800 text-sm sm:text-base md:text-lg pb-2">
+                    <p
+                      className="whitespace-pre-wrap font-serif text-gray-800 pb-2"
+                      style={{
+                        fontSize: pageFontSizes[index] ? `${pageFontSizes[index]}px` : undefined,
+                        lineHeight: 1.7,
+                      }}
+                    >
                       {page}
                     </p>
                   </div>
