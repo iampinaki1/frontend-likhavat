@@ -94,6 +94,9 @@ export function PoemsPage() {
     const measure = () => {
       if (cardRef.current) {
         setCardDims({ w: cardRef.current.clientWidth, h: cardRef.current.clientHeight });
+      } else {
+        // fallback before ref attaches
+        setCardDims({ w: Math.min(window.innerWidth, 672), h: Math.min(window.innerHeight - 64, 720) });
       }
     };
     measure();
@@ -564,7 +567,7 @@ export function PoemsPage() {
                     <p
                       className="whitespace-pre-wrap font-serif text-gray-800 pb-2"
                       style={{
-                        fontSize: pageFontSizes[index] ? `${pageFontSizes[index]}px` : undefined,
+                        fontSize: `${pageFontSizes[index] || 13}px`,
                         lineHeight: 1.7,
                       }}
                     >
