@@ -199,7 +199,7 @@ export function PoemsPage() {
     const titleH = 72;
 
     return poemPages.map((page, i) =>
-      fitFontSize(page, textW, textH, 1.7, i === 0 ? titleH : 20, 8, 26)
+      fitFontSize(page, textW, textH, 1.7, i === 0 ? titleH : 20, 11, 16)
     );
   }, [poemPages, cardDims]);
 
