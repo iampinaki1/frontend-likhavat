@@ -34,7 +34,9 @@ export function ScriptVersionEditPage() {
           
           // Set initial content - if versionId is provided, find that version; otherwise use latest
           if (versionId && editsWithContent.length > 0) {
-            const versionIndex = editsWithContent.findIndex(v => v._id === versionId || v.id === versionId);
+            const versionIndex = editsWithContent.findIndex(v => 
+              (v._id || v.id)?.toString() === versionId?.toString()
+            );
             if (versionIndex !== -1) {
               setSelectedVersionIndex(versionIndex);
               setVersionContent(editsWithContent[versionIndex].body || "");
