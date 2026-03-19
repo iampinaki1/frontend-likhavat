@@ -67,7 +67,7 @@ export function ScriptVersionEditPage() {
 
   // Handle save
   const handleSave = async () => {
-    if (!versionContent.trim()) {
+    if (versionContent === undefined || versionContent === null) {
       toast.error("Content cannot be empty");
       return;
     }

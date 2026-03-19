@@ -157,11 +157,7 @@ export function ScriptDetailPage() {
 
   const edits = [];
 
-  const displayedContent =
-    selectedVersion?.body ||
-    selectedVersion?.content ||
-    script.content ||
-    "No content";
+  const displayedContent = selectedVersion?.body || selectedVersion?.content || script.content || null;
 
   /* ---------------- USER PERMISSIONS ---------------- */
 
@@ -517,9 +513,13 @@ export function ScriptDetailPage() {
 
           <h3 className="text-xl font-semibold mb-4">Script Content</h3>
 
-          <pre className="whitespace-pre-wrap font-mono text-sm">
-            {displayedContent}
-          </pre>
+          {displayedContent ? (
+            <pre className="whitespace-pre-wrap font-mono text-sm">{displayedContent}</pre>
+          ) : (
+            <div className="text-center py-12 text-gray-400">
+              <p className="text-sm">No content yet. Edit a version to start writing.</p>
+            </div>
+          )}
 
         </div>
 
