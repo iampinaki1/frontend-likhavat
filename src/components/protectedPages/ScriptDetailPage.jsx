@@ -146,11 +146,11 @@ export function ScriptDetailPage() {
   );
 
   const currentVersion =
-    versions.find(v => (v._id || v.id) === script.currentVersion) ||
+    versions.find(v => (v._id || v.id)?.toString() === script.currentVersion?.toString()) ||
     sortedVersions[0];
 
   const selectedVersion = selectedVersionId
-    ? versions.find(v => (v._id || v.id) === selectedVersionId)
+    ? versions.find(v => (v._id || v.id)?.toString() === selectedVersionId?.toString())
     : currentVersion;
 
   /* ---------------- EDIT MODEL ---------------- */
@@ -455,7 +455,7 @@ export function ScriptDetailPage() {
 
             const id = version._id || version.id;
 
-            const isSelected = (selectedVersion?._id || selectedVersion?.id) === id;
+            const isSelected = (selectedVersion?._id || selectedVersion?.id)?.toString() === id?.toString();
 
             return(
 
