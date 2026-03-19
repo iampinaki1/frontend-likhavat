@@ -2,7 +2,7 @@ import React, { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useApp } from "../../context/Appcontext.jsx";
 import { toast } from "sonner";
-import { GitBranch, User, Clock, X } from "lucide-react";
+import { GitBranch, User, Clock } from "lucide-react";
 import { format } from "date-fns";
 
 const genres = ["Drama", "Comedy", "Action", "Horror", "Sci-Fi", "Romance", "Thriller"];
@@ -26,33 +26,11 @@ export function CreateScriptPage() {
   const [versionMessage, setVersionMessage] = useState("Initial version");
 
   const [collaborators, setCollaborators] = useState([]);
-  const [collaboratorInput, setCollaboratorInput] = useState("");
 
   const [versions, setVersions] = useState([]);
 
   const [activeTab, setActiveTab] = useState("details");
 
-  const handleAddCollaborator = () => {
-
-    if (
-      collaboratorInput.trim() &&
-      !collaborators.includes(collaboratorInput.trim())
-    ) {
-
-      setCollaborators([...collaborators, collaboratorInput.trim()]);
-      setCollaboratorInput("");
-
-      toast.success("Collaborator added!");
-
-    }
-
-  };
-
-  const handleRemoveCollaborator = (username) => {
-
-    setCollaborators(collaborators.filter((c) => c !== username));
-
-  };
 
   const handleSaveVersion = () => {
 
@@ -271,42 +249,14 @@ export function CreateScriptPage() {
                     </label>
                   </div>
 
-                  <div className="space-y-2">
-                    <label className="text-sm font-medium leading-none text-gray-700">Collaborators</label>
-                    <p className="text-sm text-gray-500">Collaborators can edit and create new versions</p>
-                    <div className="flex space-x-2">
-                      <input
-                        placeholder="Enter username"
-                        value={collaboratorInput}
-                        onChange={(e) => setCollaboratorInput(e.target.value)}
-                        onKeyPress={(e) => e.key === 'Enter' && (e.preventDefault(), handleAddCollaborator())}
-                        className="flex h-10 w-full rounded-md border border-gray-200 bg-white px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-gray-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
-                      />
-                      <button
-                        type="button"
-                        onClick={handleAddCollaborator}
-                        className="inline-flex items-center justify-center rounded-md text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:opacity-50 disabled:pointer-events-none ring-offset-background border border-gray-200 hover:bg-gray-100 hover:text-gray-900 h-10 py-2 px-4"
-                      >
-                        Add
-                      </button>
+                  <div className="flex items-start space-x-3 p-4 rounded-lg border border-gray-200" style={{ backgroundColor: '#FFF8ED', borderColor: '#E5D4C1' }}>
+                    <User className="w-4 h-4 mt-0.5 flex-shrink-0" style={{ color: '#D4A574' }} />
+                    <div>
+                      <p className="text-sm font-medium text-gray-700">Collaborators</p>
+                      <p className="text-sm text-gray-500 mt-0.5">
+                        To collaborate on this script, others can send a collaboration request from the script's detail page once it's created. You can accept or reject requests there.
+                      </p>
                     </div>
-                    {collaborators.length > 0 && (
-                      <div className="flex flex-wrap gap-2 mt-2">
-                        {collaborators.map((collab) => (
-                          <div key={collab} className="inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-semibold transition-colors focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 border-transparent bg-gray-100 text-gray-900 space-x-1">
-                            <User className="w-3 h-3" />
-                            <span>{collab}</span>
-                            <button
-                              type="button"
-                              onClick={() => handleRemoveCollaborator(collab)}
-                              className="ml-1 hover:text-red-600 focus:outline-none"
-                            >
-                              <X className="w-3 h-3" />
-                            </button>
-                          </div>
-                        ))}
-                      </div>
-                    )}
                   </div>
                 </div>
               )}
