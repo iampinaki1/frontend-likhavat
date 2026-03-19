@@ -1,57 +1,37 @@
-
 import { useState, useEffect } from "react";
 import { useParams, Link, useNavigate } from "react-router-dom";
 import { useApp, api } from "../../context/Appcontext.jsx";
 import {
-  MessageCircle,
-  Film,
-  Trash2,
-  Edit,
-  Eye,
-  EyeOff,
-  Users,
-  GitBranch,
-  Clock,
-  User,
-  Maximize2,
-  Loader2,
-  Book,
-  BookHeart,
-  BookOpen,
-  BookOpenCheck,
-  UserPlus,
-  Check,
-  X,
+  MessageCircle, Film, Trash2, Edit, Users, GitBranch,
+  Clock, User, Maximize2, Loader2, Book, BookHeart,
+  BookOpen, BookOpenCheck, UserPlus, Check, X,
 } from "lucide-react";
 import { format } from "date-fns";
 import { toast } from "sonner";
 
-export function ScriptDetailPage() {
+const BTN = "h-9 px-3 rounded-md border text-sm flex items-center gap-1.5 transition-colors hover:opacity-80";
+const BTN_PRIMARY = { backgroundColor: "#D4A574", color: "#fff", border: "none" };
+const BTN_OUTLINE = { borderColor: "#D4A574", color: "#D4A574" };
 
+export function ScriptDetailPage() {
   const { scriptId } = useParams();
   const navigate = useNavigate();
-
-  const {
-    currentUser,
-    toggleLike,
-    toggleBookmark,
-    addComment,
-    deleteScript,
-    updateScript
-  } = useApp();
+  const { currentUser, toggleLike, toggleBookmark, addComment, deleteScript, updateScript } = useApp();
 
   const [script, setScript] = useState(null);
   const [loading, setLoading] = useState(true);
   const [commentText, setCommentText] = useState("");
   const [selectedVersionId, setSelectedVersionId] = useState(null);
+  const [selectedVersionContent, setSelectedVersionContent] = useState(null);
+  const [contentLoading, setContentLoading] = useState(false);
   const [commentCursor, setCommentCursor] = useState(null);
   const [accessRequests, setAccessRequests] = useState([]);
   const [accessLoading, setAccessLoading] = useState(false);
   const [accessRequested, setAccessRequested] = useState(false);
 
-  
-   useEffect(() => {
-  const loadScript = async () => {
+  // Load script
+  useEffect(() => {
+    const loadScript = async () => {
       try {
         const { data } = await api.get(`/scripts/script/search?codee=${scriptId}`);
         if (data.success) {
@@ -59,11 +39,18 @@ export function ScriptDetailPage() {
             const commentsData = await api.get(`/scripts/script/${scriptId}/comment`);
             data.script.comments = commentsData.data.comments || [];
             setCommentCursor(commentsData.data.nextCursor || null);
-          } catch (commentErr) {
-            console.error("Failed to load comments:", commentErr);
+          } catch {
             data.script.comments = [];
           }
           setScript(data.script);
+          // Default to latest version
+          const edits = data.script.edits || [];
+          if (edits.length > 0) {
+            const sorted = [...edits].sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+            const latest = sorted[0];
+            setSelectedVersionId(latest._id?.toString());
+            setSelectedVersionContent(latest.body ?? null);
+          }
         }
       } catch (err) {
         console.error("Failed to load script:", err);
@@ -74,22 +61,44 @@ export function ScriptDetailPage() {
     loadScript();
   }, [scriptId]);
 
-  // Load access requests only for the author
+  // Reload version content when selection changes
+  useEffect(() => {
+    if (!selectedVersionId || !script) return;
+    const versions = script.edits || [];
+    const found = versions.find(v => (v._id || v.id)?.toString() === selectedVersionId);
+    if (found) {
+      // Already populated — use directly
+      setSelectedVersionContent(found.body ?? null);
+    } else {
+      // Fetch individually
+      const fetchVersion = async () => {
+        setContentLoading(true);
+        try {
+          const { data } = await api.get(`/scripts/script/${scriptId}/version/${selectedVersionId}`);
+          if (data.success) setSelectedVersionContent(data.version?.body ?? null);
+        } catch (err) {
+          console.error("Failed to load version:", err);
+        } finally {
+          setContentLoading(false);
+        }
+      };
+      fetchVersion();
+    }
+  }, [selectedVersionId, script, scriptId]);
+
+  // Load access requests for author
   useEffect(() => {
     const fetchAccessRequests = async () => {
       if (!script || !currentUser) return;
-      const userIdLocal = currentUser._id || currentUser.id;
+      const userId = currentUser._id || currentUser.id;
       const authorId = script.author?._id || script.author;
-      if (userIdLocal !== authorId) return;
-
+      if (userId?.toString() !== authorId?.toString()) return;
       try {
         setAccessLoading(true);
-        const { data } = await api.get(`/scripts/script/${script._id || script.id}/requests`);
-        if (data && data.success) {
-          setAccessRequests(data.requests || []);
-        }
+        const { data } = await api.get(`/scripts/script/${script._id}/requests`);
+        if (data?.success) setAccessRequests(data.requests || []);
       } catch (err) {
-        console.error("Failed to load script access requests", err);
+        console.error("Failed to load access requests", err);
       } finally {
         setAccessLoading(false);
       }
@@ -97,129 +106,63 @@ export function ScriptDetailPage() {
     fetchAccessRequests();
   }, [script, currentUser]);
 
-  /* ---------------- LOADING ---------------- */
-
   if (loading) {
-
     return (
       <div className="flex items-center justify-center min-h-[60vh]">
-        <Loader2 className="w-12 h-12 animate-spin text-blue-500"/>
+        <Loader2 className="w-12 h-12 animate-spin" style={{ color: "#D4A574" }} />
       </div>
     );
-
   }
 
   if (!script) {
-
     return (
       <div className="flex items-center justify-center min-h-[60vh]">
-        <div
-          className="rounded-xl border shadow-sm max-w-md w-full p-8 text-center"
-          style={{backgroundColor:"#FFF8ED",borderColor:"#E5D4C1"}}
-        >
-          <Film className="w-16 h-16 mx-auto mb-4 text-gray-400"/>
+        <div className="rounded-xl border shadow-sm max-w-md w-full p-8 text-center"
+          style={{ backgroundColor: "#FFF8ED", borderColor: "#E5D4C1" }}>
+          <Film className="w-16 h-16 mx-auto mb-4 text-gray-400" />
           <h2 className="text-xl font-semibold mb-2">Script Not Found</h2>
-
           <Link to="/">
-            <button
-              className="h-10 px-4 rounded-md shadow"
-              style={{backgroundColor:"#D4A574",color:"#fff"}}
-            >
-              Back to Home
-            </button>
+            <button className={BTN} style={BTN_PRIMARY}>Back to Home</button>
           </Link>
         </div>
       </div>
     );
-
   }
 
-  /* ---------------- DATA NORMALIZATION ---------------- */
-
-  // Backend stores versions in `edits` field
   const versions = script.edits || [];
   const comments = script.comments || [];
   const allowedUsers = script.allowedUsers || [];
-
-  const sortedVersions = [...versions].sort(
-    (a,b)=>new Date(b.timestamp || b.createdAt) - new Date(a.timestamp || a.createdAt)
-  );
-
-  const currentVersion =
-    versions.find(v => (v._id || v.id)?.toString() === script.currentVersion?.toString()) ||
-    sortedVersions[0];
-
-  const selectedVersion = selectedVersionId
-    ? versions.find(v => (v._id || v.id)?.toString() === selectedVersionId?.toString())
-    : currentVersion;
-
-  /* ---------------- EDIT MODEL ---------------- */
-
-  const edits = [];
-
-  const displayedContent = selectedVersion?.body || selectedVersion?.content || script.content || null;
-
-  /* ---------------- USER PERMISSIONS ---------------- */
+  const sortedVersions = [...versions].sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
 
   const userId = currentUser?._id || currentUser?.id;
-
-  const isLiked = currentUser
-    ? (script.likes || []).includes(userId)
-    : false;
-
-  const isBookmarked = currentUser
-    ? (currentUser.bookmarksScript || []).includes(script._id || script.id)
-    : false;
-
-  const isAuthor = userId === (script.author?._id || script.author);
-
-  const isAllowedUser = allowedUsers.some(u => (u._id || u) === userId || (u._id || u)?.toString() === userId?.toString());
-
-  const canEdit = isAuthor;
-
-  /* ---------------- ACTIONS ---------------- */
+  const isLiked = currentUser ? (script.likes || []).some(id => id?.toString() === userId?.toString()) : false;
+  const isBookmarked = currentUser ? (currentUser.bookmarksScript || []).some(id => id?.toString() === (script._id)?.toString()) : false;
+  const isAuthor = userId?.toString() === (script.author?._id || script.author)?.toString();
+  const isAllowedUser = allowedUsers.some(u => (u._id || u)?.toString() === userId?.toString());
 
   const handleLike = () => {
-    // Optimistically update likes locally for instant UI feedback
     setScript(prev => {
       if (!prev) return prev;
-      const currentLikes = prev.likes || [];
-      const hasLiked = currentLikes.includes(userId);
-      return {
-        ...prev,
-        likes: hasLiked
-          ? currentLikes.filter(id => id !== userId)
-          : [...currentLikes, userId]
-      };
+      const likes = prev.likes || [];
+      const liked = likes.some(id => id?.toString() === userId?.toString());
+      return { ...prev, likes: liked ? likes.filter(id => id?.toString() !== userId?.toString()) : [...likes, userId] };
     });
-
-    toggleLike(script._id || script.id, "script");
+    toggleLike(script._id, "script");
     toast.success(isLiked ? "Removed like" : "Liked");
   };
 
   const handleBookmark = () => {
-
-    toggleBookmark(script._id || script.id,"script");
-
+    toggleBookmark(script._id, "script");
     toast.success(isBookmarked ? "Removed bookmark" : "Bookmarked");
-
   };
 
   const handleRequestAccess = async () => {
-    if (!currentUser) {
-      toast.error("Please log in to request access");
-      return;
-    }
+    if (!currentUser) { toast.error("Please log in"); return; }
     try {
-      const { data } = await api.post(`/scripts/script/${script._id || script.id}/request-access`);
-      if (data && data.success) {
-        toast.success(data.msg || "Access request sent");
-        setAccessRequested(true);
-      } else {
-        toast.success(data?.msg || "Request sent");
-      }
+      const { data } = await api.post(`/scripts/script/${script._id}/request-access`);
+      toast.success(data?.msg || "Request sent");
+      setAccessRequested(true);
     } catch (err) {
-      console.error("Request access error", err);
       toast.error(err.response?.data?.msg || "Failed to request access");
     }
   };
@@ -227,386 +170,231 @@ export function ScriptDetailPage() {
   const handleAcceptAccess = async (request) => {
     try {
       await api.post(`/scripts/script/${request._id}/accept`);
-      toast.success("Access request accepted");
+      toast.success("Access granted");
       setAccessRequests(prev => prev.filter(r => r._id !== request._id));
-      setScript(prev => prev ? {
-        ...prev,
-        allowedUsers: [...(prev.allowedUsers || []), request.sender?._id || request.sender],
-      } : prev);
-    } catch (err) {
-      console.error("Accept access error", err);
-      toast.error("Failed to accept access request");
-    }
+      setScript(prev => prev ? { ...prev, allowedUsers: [...(prev.allowedUsers || []), request.sender] } : prev);
+    } catch { toast.error("Failed to accept"); }
   };
 
   const handleRejectAccess = async (request) => {
     try {
       await api.post(`/scripts/script/${request._id}/reject`);
-      toast.success("Access request rejected");
+      toast.success("Request rejected");
       setAccessRequests(prev => prev.filter(r => r._id !== request._id));
-    } catch (err) {
-      console.error("Reject access error", err);
-      toast.error("Failed to reject access request");
-    }
+    } catch { toast.error("Failed to reject"); }
   };
 
   const handleComment = () => {
-
-    if(!commentText.trim()) return;
-
-    addComment(script._id || script.id,"script",commentText);
-
+    if (!commentText.trim()) return;
+    addComment(script._id, "script", commentText);
     setCommentText("");
-
     toast.success("Comment added");
-
   };
 
   const loadMoreComments = async () => {
-
-    if(!commentCursor) return;
-
-    try{
-
-      const {data} = await api.get(`/scripts/script/${scriptId}/comment?lastId=${commentCursor}`);
-
-      if(data.success){
-
-        setScript(prev=>({
-
-          ...prev,
-          comments:[...(prev.comments || []),...data.comments]
-
-        }));
-
+    if (!commentCursor) return;
+    try {
+      const { data } = await api.get(`/scripts/script/${scriptId}/comment?lastId=${commentCursor}`);
+      if (data.success) {
+        setScript(prev => ({ ...prev, comments: [...(prev.comments || []), ...data.comments] }));
         setCommentCursor(data.nextCursor || null);
-
       }
-
-    }catch(err){
-
-      console.error("Load comments error",err);
-
-    }
-
+    } catch (err) { console.error(err); }
   };
 
   const handleDelete = () => {
-
-    if(window.confirm("Delete script?")){
-
-      deleteScript(script._id || script.id);
-
+    if (window.confirm("Delete script?")) {
+      deleteScript(script._id);
       toast.success("Script deleted");
-
       navigate("/");
-
     }
-
   };
 
   const handleToggleVisibility = async () => {
-    const newVisibility = script.visibility === "public" ? "private" : "public";
-    
+    const newVis = script.visibility === "public" ? "private" : "public";
     try {
-      await updateScript(script._id || script.id, {
-        visibility: newVisibility
-      });
-      
-      // Update local state immediately
-      setScript(prev => ({
-        ...prev,
-        visibility: newVisibility
-      }));
-      
-      toast.success(`Script is now ${newVisibility}`);
-    } catch (err) {
-      console.error("Failed to update visibility:", err);
-      toast.error("Failed to update visibility");
-    }
+      await updateScript(script._id, { visibility: newVis });
+      setScript(prev => ({ ...prev, visibility: newVis }));
+      toast.success(`Script is now ${newVis}`);
+    } catch { toast.error("Failed to update visibility"); }
   };
 
-  /* ---------------- UI ---------------- */
-
   return (
-
-    <div className="max-w-7xl mx-auto space-y-6">
+    <div className="max-w-7xl mx-auto space-y-6 pb-8">
 
       {/* HEADER */}
-
-      <div
-        className="rounded-xl border shadow-sm overflow-hidden"
-        style={{backgroundColor:"#FFF8ED",borderColor:"#E5D4C1"}}
-      >
-
+      <div className="rounded-xl border shadow-sm overflow-hidden" style={{ backgroundColor: "#FFF8ED", borderColor: "#E5D4C1" }}>
+        {script.image && script.image !== "no img" && (
+          <img src={script.image} alt={script.title} className="w-full h-48 object-cover" />
+        )}
         <div className="p-6">
-
-          <h1 className="text-3xl font-semibold mb-2">{script.title}</h1>
-
-          <Link to={`/profile/${encodeURIComponent(script.author?.username)}`} className="text-sm hover:underline">
+          <div className="flex flex-wrap items-start justify-between gap-2 mb-2">
+            <h1 className="text-2xl sm:text-3xl font-semibold">{script.title}</h1>
+            <div className="flex gap-1.5 flex-wrap">
+              <span className="px-2 py-0.5 rounded-full text-xs font-medium" style={{ backgroundColor: "#D4A574", color: "#fff" }}>{script.genre}</span>
+              <span className="px-2 py-0.5 rounded-full text-xs font-medium border" style={{ borderColor: "#D4A574", color: "#D4A574" }}>{script.purpose}</span>
+              <span className="px-2 py-0.5 rounded-full text-xs font-medium border" style={{ borderColor: "#E5D4C1", color: "#888" }}>{script.visibility}</span>
+            </div>
+          </div>
+          <Link to={`/profile/${encodeURIComponent(script.author?.username)}`} className="text-sm hover:underline" style={{ color: "#D4A574" }}>
             by {script.author?.username}
           </Link>
-
-          <p className="text-gray-600 mt-4">{script.description}</p>
+          <p className="text-gray-600 mt-3 text-sm leading-relaxed">{script.description}</p>
 
           {/* ACTION BUTTONS */}
-
           <div className="flex gap-2 mt-4 flex-wrap">
-
-            <button
-              onClick={()=>navigate(`/script/${scriptId}/full-read`)}
-              className="h-9 px-3 rounded-md"
-              style={{backgroundColor:"#D4A574",color:"#fff"}}
-            >
-              <Maximize2 className="w-4 h-4 inline mr-1"/>
-              Full Page
+            <button onClick={() => navigate(`/script/${scriptId}/full-read`)} className={BTN} style={BTN_PRIMARY}>
+              <Maximize2 className="w-4 h-4" /> Full Page
             </button>
-
-            <button
-              onClick={handleLike}
-              className="h-9 px-3 border rounded flex items-center gap-1"
-            >
-              {isLiked
-                ? <BookHeart className="w-4 h-4 text-red-500"/>
-                : <Book className="w-4 h-4"/>}
-
+            <button onClick={handleLike} className={BTN} style={BTN_OUTLINE}>
+              {isLiked ? <BookHeart className="w-4 h-4" /> : <Book className="w-4 h-4" />}
               {script.likes?.length || 0}
-
             </button>
-
-            <button
-              onClick={handleBookmark}
-              className="h-9 px-3 border rounded flex items-center gap-1"
-            >
-              {isBookmarked
-                ? <BookOpenCheck className="w-4 h-4 text-blue-500"/>
-                : <BookOpen className="w-4 h-4"/>}
+            <button onClick={handleBookmark} className={BTN} style={BTN_OUTLINE}>
+              {isBookmarked ? <BookOpenCheck className="w-4 h-4" /> : <BookOpen className="w-4 h-4" />}
             </button>
-
-            {/* Request access: visible to non-author users who don't already have access */}
+            <button className={BTN} style={BTN_OUTLINE}>
+              <MessageCircle className="w-4 h-4" /> {(script.comments || []).length}
+            </button>
             {!isAuthor && !isAllowedUser && currentUser && (
-              <button
-                onClick={handleRequestAccess}
-                className="h-9 px-3 border rounded flex items-center gap-1"
-              >
-                <UserPlus className="w-4 h-4" />
-                <span>{accessRequested ? "Requested" : "Request Access"}</span>
+              <button onClick={handleRequestAccess} className={BTN} style={BTN_OUTLINE} disabled={accessRequested}>
+                <UserPlus className="w-4 h-4" /> {accessRequested ? "Requested" : "Request Access"}
               </button>
             )}
-
-            {/* <button className="h-9 px-3 border rounded flex items-center gap-1">
-              <MessageCircle className="w-4 h-4"/>
-              {comments.length}
-            </button> */}
-             <button className="h-9 px-3 border rounded-md flex items-center gap-1">
-               <MessageCircle className="w-4 h-4" />
-              {(script.comments || []).length}
-          </button>
-
-            {canEdit && (
-              <>
-                <button
-                  onClick={handleToggleVisibility}
-                  className="h-9 px-3 border rounded-md"
-                >
-                  {script.visibility === "public" ? "Make Private":"Make Public"}
-                </button>
-              </>
-            )}
-
             {isAuthor && (
-              <button
-                onClick={handleDelete}
-                className="h-9 px-3 bg-red-500 text-white rounded-md"
-              >
-                <Trash2 className="w-4 h-4 inline mr-1"/>
-                Delete
+              <button onClick={handleToggleVisibility} className={BTN} style={BTN_OUTLINE}>
+                {script.visibility === "public" ? "Make Private" : "Make Public"}
               </button>
             )}
-
+            {isAuthor && (
+              <button onClick={handleDelete} className={BTN} style={{ backgroundColor: "#ef4444", color: "#fff", border: "none" }}>
+                <Trash2 className="w-4 h-4" /> Delete
+              </button>
+            )}
           </div>
-
         </div>
-
       </div>
 
-
-      {/* VERSION + SCRIPT VIEW */}
-
+      {/* VERSION HISTORY + SCRIPT CONTENT */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
 
         {/* VERSION HISTORY */}
-
-        <div
-          className="border rounded-xl p-6"
-          style={{backgroundColor:"#FFF8ED",borderColor:"#E5D4C1"}}
-        >
-
-          <h3 className="text-xl font-semibold flex items-center mb-4">
-            <GitBranch className="w-5 h-5 mr-2"/>
-            Version History
+        <div className="border rounded-xl p-5" style={{ backgroundColor: "#FFF8ED", borderColor: "#E5D4C1" }}>
+          <h3 className="text-lg font-semibold flex items-center mb-4">
+            <GitBranch className="w-4 h-4 mr-2" style={{ color: "#D4A574" }} /> Version History
           </h3>
-
-          {sortedVersions.map((version,index)=>{
-
-            const id = version._id || version.id;
-
-            const isSelected = (selectedVersion?._id || selectedVersion?.id)?.toString() === id?.toString();
-
-            return(
-
+          {sortedVersions.length === 0 && (
+            <p className="text-sm text-gray-400">No versions yet.</p>
+          )}
+          {sortedVersions.map((version, index) => {
+            const id = (version._id || version.id)?.toString();
+            const isSelected = selectedVersionId === id;
+            return (
               <button
                 key={id}
-                onClick={()=>setSelectedVersionId(id)}
-                className={`w-full text-left p-3 rounded border mb-2 ${isSelected?"bg-gray-100":""}`}
+                onClick={() => setSelectedVersionId(id)}
+                className="w-full text-left p-3 rounded-lg border mb-2 transition-colors"
+                style={{
+                  borderColor: isSelected ? "#D4A574" : "#E5D4C1",
+                  backgroundColor: isSelected ? "#F5E6D3" : "#fff",
+                }}
               >
-
-                <div className="text-sm font-semibold">
-                  Version {sortedVersions.length-index}
+                <div className="text-sm font-semibold" style={{ color: "#333" }}>
+                  Version {sortedVersions.length - index}
                 </div>
-
-                <div className="text-xs text-gray-500 flex items-center">
-                  <User className="w-3 h-3 mr-1"/>
-                  {version.editedBy?.username || version.editorName || "Unknown"}
+                <div className="text-xs text-gray-500 flex items-center mt-0.5">
+                  <User className="w-3 h-3 mr-1" />
+                  {version.editedBy?.username || "Unknown"}
                 </div>
-
-                <div className="text-xs text-gray-500 flex items-center">
-                  <Clock className="w-3 h-3 mr-1"/>
-                  {(() => {
-                    const d = new Date(version.timestamp || version.createdAt);
-                    return !isNaN(d) ? format(d, "MMM d") : "—";
-                  })()}
+                <div className="text-xs text-gray-500 flex items-center mt-0.5">
+                  <Clock className="w-3 h-3 mr-1" />
+                  {(() => { const d = new Date(version.createdAt); return !isNaN(d) ? format(d, "MMM d, yyyy") : "—"; })()}
                 </div>
-
-                <div className="text-xs text-gray-500">
-                  {version.body ? 1 : 0} edits
-                </div>
-
-                {canEdit && (
+                {isAuthor && (
                   <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      navigate(`/script/${scriptId}/version/${id}/edit`);
-                    }}
-                    className="mt-2 w-full px-2 py-1 text-xs bg-blue-500 text-white rounded hover:bg-blue-600 flex items-center justify-center gap-1"
+                    onClick={(e) => { e.stopPropagation(); navigate(`/script/${scriptId}/version/${id}/edit`); }}
+                    className="mt-2 w-full px-2 py-1 text-xs rounded flex items-center justify-center gap-1 transition-colors"
+                    style={{ backgroundColor: "#D4A574", color: "#fff" }}
                   >
-                    <Edit className="w-3 h-3" />
-                    Edit Version
+                    <Edit className="w-3 h-3" /> Edit Version
                   </button>
                 )}
-
               </button>
-
             );
-
           })}
-
         </div>
 
-
         {/* SCRIPT CONTENT */}
-
-        <div
-          className="lg:col-span-2 border rounded-xl p-6"
-          style={{backgroundColor:"#FFF8ED",borderColor:"#E5D4C1"}}
-        >
-
-          <h3 className="text-xl font-semibold mb-4">Script Content</h3>
-
-          {displayedContent ? (
-            <pre className="whitespace-pre-wrap font-mono text-sm">{displayedContent}</pre>
+        <div className="lg:col-span-2 border rounded-xl p-5" style={{ backgroundColor: "#FFF8ED", borderColor: "#E5D4C1" }}>
+          <h3 className="text-lg font-semibold mb-4">Script Content</h3>
+          {contentLoading ? (
+            <div className="flex items-center justify-center py-12">
+              <Loader2 className="w-6 h-6 animate-spin" style={{ color: "#D4A574" }} />
+            </div>
+          ) : selectedVersionContent ? (
+            <pre className="whitespace-pre-wrap font-mono text-sm leading-relaxed text-gray-800">{selectedVersionContent}</pre>
           ) : (
             <div className="text-center py-12 text-gray-400">
+              <Film className="w-10 h-10 mx-auto mb-3 opacity-40" />
               <p className="text-sm">No content yet. Edit a version to start writing.</p>
             </div>
           )}
-
         </div>
-
       </div>
 
-
       {/* ALLOWED USERS */}
-
       {allowedUsers.length > 0 && (
-
-        <div
-          className="border rounded-xl p-6"
-          style={{backgroundColor:"#FFF8ED",borderColor:"#E5D4C1"}}
-        >
-
-          <h3 className="text-xl font-semibold flex items-center mb-4">
-            <Users className="w-5 h-5 mr-2"/>
-            Allowed Users
+        <div className="border rounded-xl p-5" style={{ backgroundColor: "#FFF8ED", borderColor: "#E5D4C1" }}>
+          <h3 className="text-lg font-semibold flex items-center mb-4">
+            <Users className="w-4 h-4 mr-2" style={{ color: "#D4A574" }} /> Collaborators
           </h3>
-
-          {allowedUsers.map(u => {
-            const id = u._id || u;
-            const name = u.username || String(id).slice(-6);
-            return (
-              <div key={String(id)} className="flex items-center gap-2 mb-2">
-                <div className="h-8 w-8 rounded-full bg-gray-200 flex items-center justify-center text-sm font-medium">
-                  {name.charAt(0).toUpperCase()}
-                </div>
-                <Link to={`/profile/${encodeURIComponent(u.username)}`} className="text-sm hover:underline">
+          <div className="flex flex-wrap gap-3">
+            {allowedUsers.map(u => {
+              const id = u._id || u;
+              const name = u.username || String(id).slice(-6);
+              return (
+                <Link key={String(id)} to={`/profile/${encodeURIComponent(u.username)}`}
+                  className="flex items-center gap-2 px-3 py-1.5 rounded-full border text-sm hover:opacity-80"
+                  style={{ borderColor: "#E5D4C1", backgroundColor: "#fff" }}>
+                  <div className="h-5 w-5 rounded-full flex items-center justify-center text-xs font-medium text-white" style={{ backgroundColor: "#D4A574" }}>
+                    {name.charAt(0).toUpperCase()}
+                  </div>
                   {name}
                 </Link>
-              </div>
-            );
-          })}
-
+              );
+            })}
+          </div>
         </div>
-
       )}
 
-      {/* ACCESS REQUESTS (only for author) */}
+      {/* ACCESS REQUESTS */}
       {isAuthor && (
-        <div
-          className="border rounded-xl p-6"
-          style={{backgroundColor:"#FFF8ED",borderColor:"#E5D4C1"}}
-        >
-          <h3 className="text-xl font-semibold mb-4 flex items-center gap-2">
-            <Users className="w-5 h-5" />
-            Access Requests
+        <div className="border rounded-xl p-5" style={{ backgroundColor: "#FFF8ED", borderColor: "#E5D4C1" }}>
+          <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
+            <Users className="w-4 h-4" style={{ color: "#D4A574" }} /> Access Requests
           </h3>
-
           {accessLoading ? (
             <div className="flex items-center justify-center py-4">
-              <Loader2 className="w-5 h-5 animate-spin text-blue-500" />
+              <Loader2 className="w-5 h-5 animate-spin" style={{ color: "#D4A574" }} />
             </div>
           ) : accessRequests.length === 0 ? (
-            <p className="text-sm text-gray-500">No pending access requests.</p>
+            <p className="text-sm text-gray-500">No pending requests.</p>
           ) : (
-            accessRequests.map((request) => (
-              <div
-                key={request._id}
-                className="flex items-center justify-between border rounded-lg p-3 mb-2"
-                style={{backgroundColor:"#FFF8ED",borderColor:"#E5D4C1"}}
-              >
-                <Link
-                  to={`/profile/${encodeURIComponent(request.sender?.username)}`}
-                  className="font-semibold hover:underline flex items-center gap-2"
-                >
-                  <div className="h-8 w-8 rounded-full bg-gray-200 flex items-center justify-center">
+            accessRequests.map(request => (
+              <div key={request._id} className="flex items-center justify-between border rounded-lg p-3 mb-2 bg-white" style={{ borderColor: "#E5D4C1" }}>
+                <Link to={`/profile/${encodeURIComponent(request.sender?.username)}`}
+                  className="font-medium text-sm hover:underline flex items-center gap-2">
+                  <div className="h-7 w-7 rounded-full flex items-center justify-center text-xs text-white" style={{ backgroundColor: "#D4A574" }}>
                     {(request.sender?.username || "U").charAt(0).toUpperCase()}
                   </div>
-                  <span>{request.sender?.username || "Unknown"}</span>
+                  {request.sender?.username || "Unknown"}
                 </Link>
-
                 <div className="flex gap-2">
-                  <button
-                    onClick={() => handleAcceptAccess(request)}
-                    className="h-8 px-3 rounded-md bg-gray-900 text-white text-xs flex items-center gap-1"
-                  >
-                    <Check className="w-3 h-3" />
-                    Accept
+                  <button onClick={() => handleAcceptAccess(request)} className={BTN} style={BTN_PRIMARY}>
+                    <Check className="w-3 h-3" /> Accept
                   </button>
-                  <button
-                    onClick={() => handleRejectAccess(request)}
-                    className="h-8 px-3 rounded-md border text-xs flex items-center gap-1"
-                  >
-                    <X className="w-3 h-3" />
-                    Reject
+                  <button onClick={() => handleRejectAccess(request)} className={BTN} style={BTN_OUTLINE}>
+                    <X className="w-3 h-3" /> Reject
                   </button>
                 </div>
               </div>
@@ -615,70 +403,40 @@ export function ScriptDetailPage() {
         </div>
       )}
 
-
       {/* COMMENTS */}
-
-      <div
-        className="border rounded-xl p-6"
-        style={{backgroundColor:"#FFF8ED",borderColor:"#E5D4C1"}}
-      >
-
-        <h3 className="text-xl font-semibold mb-4">Comments</h3>
-
+      <div className="border rounded-xl p-5" style={{ backgroundColor: "#FFF8ED", borderColor: "#E5D4C1" }}>
+        <h3 className="text-lg font-semibold mb-4">Comments</h3>
         {currentUser && (
-
           <div className="mb-4">
-
             <textarea
               value={commentText}
-              onChange={(e)=>setCommentText(e.target.value)}
-              className="w-full border p-2 rounded mb-2"
-              placeholder="Write comment"
+              onChange={e => setCommentText(e.target.value)}
+              className="w-full border rounded-lg p-3 text-sm mb-2 focus:outline-none"
+              style={{ borderColor: "#E5D4C1", backgroundColor: "#fff" }}
+              placeholder="Write a comment..."
+              rows={3}
             />
-
-            <button
-              onClick={handleComment}
-              className="px-4 py-2 bg-amber-500 text-white rounded"
-            >
+            <button onClick={handleComment} className={BTN} style={BTN_PRIMARY}>
               Post Comment
             </button>
-
           </div>
-
         )}
-
-        <div className="max-h-72 overflow-y-auto pr-2 mt-2">
-          {comments.map(comment=>(
-            <div
-              key={comment._id || comment.id}
-              className="border p-4 rounded-lg mb-2"
-              style={{backgroundColor:"#FFF8ED",borderColor:"#E5D4C1"}}
-            >
-              <p className="font-semibold">
-                {comment.author?.username || comment.username}
-              </p>
-              <p className="text-gray-600">
-                {comment.text || comment.content}
-              </p>
+        <div className="space-y-2 mt-2">
+          {comments.map(comment => (
+            <div key={comment._id || comment.id} className="border rounded-lg p-3 bg-white" style={{ borderColor: "#E5D4C1" }}>
+              <p className="text-sm font-semibold">{comment.author?.username || comment.username}</p>
+              <p className="text-sm text-gray-600 mt-0.5">{comment.text || comment.content}</p>
             </div>
           ))}
         </div>
-
         {commentCursor && (
-          <button
-            onClick={loadMoreComments}
-            className="text-blue-500 hover:underline"
-          >
-            Load More
+          <button onClick={loadMoreComments} className="mt-3 text-sm hover:underline" style={{ color: "#D4A574" }}>
+            Load more comments
           </button>
         )}
-
       </div>
-
     </div>
-
   );
-
 }
 
 export default ScriptDetailPage;
