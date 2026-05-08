@@ -324,9 +324,9 @@ export function PoemsPage() {
 
       const absDy = Math.abs(deltaY);
 
-      // Fast swipe (velocity > 0.5 px/ms) OR long swipe (> 120px) → change poem
-      const isFast = velocity > 0.5;
-      const isLong = absDy > 120;
+      // Fast swipe (velocity > 1.2 px/ms) OR long swipe (> 220px) → change poem
+      const isFast = velocity > 1.2;
+      const isLong = absDy > 220;
 
       if (isFast || isLong) {
         if (deltaY > 0) goToNext();
