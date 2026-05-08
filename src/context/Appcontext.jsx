@@ -9,7 +9,6 @@ export const api = axios.create({
 });
 
 api.interceptors.request.use(request => {
-  console.log(`[API CALL] ${request.method.toUpperCase()} ${request.url}`);
   return request;
 });
 

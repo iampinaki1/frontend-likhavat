@@ -1,81 +1,92 @@
-import React, { useState, useEffect } from "react";
-import { useApp } from "../../context/Appcontext.jsx";
+import React, { useState, useEffect, useCallback } from "react";
+import { useApp, api } from "../../context/Appcontext.jsx";
 import { MessageCircle, BookOpen, Film, Eye, EyeOff, Loader2, Book, BookHeart, BookOpenCheck } from "lucide-react";
 import { format } from "date-fns";
 import { Link } from "react-router-dom";
 
 export function HomePage() {
 
-  const { books, scripts, currentUser, toggleLike, toggleBookmark, addComment, fetchComments } = useApp();
+  const { currentUser, toggleLike, toggleBookmark, addComment, fetchComments } = useApp();
 
+  const [feed, setFeed] = useState([]);
+  const [cursor, setCursor] = useState(null);
+  const [hasMore, setHasMore] = useState(true);
+  const [feedLoading, setFeedLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [commentContent, setCommentContent] = useState({});
   const [showComments, setShowComments] = useState({});
   const [commentCursors, setCommentCursors] = useState({});
-  const [loading, setLoading] = useState(false);
-  const [page, setPage] = useState(1);
-  const [activeTab, setActiveTab] = useState("all");
 
-  const itemsPerPage = 5;
+  const fetchFeed = useCallback(async (lastId = null) => {
+    try {
+      const [booksRes, scriptsRes] = await Promise.all([
+        api.get(`/books/book${lastId ? `?lastId=${lastId}` : ''}`),
+        api.get(`/scripts/script${lastId ? `?lastId=${lastId}` : ''}`),
+      ]);
+      const newBooks = (booksRes.data?.books || []).map(b => ({
+        ...b, type: "book",
+        coverImage: b.image && b.image !== "no img" ? b.image : null,
+      }));
+      const newScripts = (scriptsRes.data?.scripts || []).map(s => ({
+        ...s, type: "script",
+        coverImage: s.image && s.image !== "no img" ? s.image : null,
+      }));
+      const merged = [...newBooks, ...newScripts]
+        .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
 
-  const publicBooks = books
-    .filter(
-      (book) => book.visibility === "public" || book.author === currentUser?.id
-    )
-    .sort(
-      (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
-    );
+      if (lastId) {
+        setFeed(prev => [...prev, ...merged]);
+      } else {
+        setFeed(merged);
+      }
 
-  const publicScripts = scripts
-    .filter(
-      (script) =>
-        script.visibility === "public" ||
-        (script.author?._id || script.author)?.toString() === (currentUser?._id || currentUser?.id)?.toString() ||
-        (script.allowedUsers || []).some(u => (u._id || u)?.toString() === (currentUser?._id || currentUser?.id)?.toString())
-    )
-    .sort(
-      (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
-    );
+      // Use the later of the two cursors as next page marker
+      const nextCursor = booksRes.data?.nextCursor || scriptsRes.data?.nextCursor || null;
+      setCursor(nextCursor);
+      setHasMore(!!nextCursor);
+    } catch (e) {
+      console.error(e);
+    }
+  }, []);
 
-  const loadMore = () => {
-    setLoading(true);
+  useEffect(() => {
+    const load = async () => {
+      setFeedLoading(true);
+      await fetchFeed();
+      setFeedLoading(false);
+    };
+    load();
+  }, [fetchFeed]);
 
-    setTimeout(() => {
-      setPage(page + 1);
-      setLoading(false);
-    }, 500);
+  const loadMore = async () => {
+    if (loadingMore || !hasMore) return;
+    setLoadingMore(true);
+    await fetchFeed(cursor);
+    setLoadingMore(false);
   };
 
-  const handleLike = (id, type) => {
-    toggleLike(id, type);
-  };
-
-  const handleBookmark = (id, type) => {
-    toggleBookmark(id, type);
-  };
+  const handleLike = (id, type) => toggleLike(id, type);
+  const handleBookmark = (id, type) => toggleBookmark(id, type);
 
   const handleComment = (id, type) => {
     const content = commentContent[id];
-
-    if (content && content.trim()) {
+    if (content?.trim()) {
       addComment(id, type, content);
-      setCommentContent({ ...commentContent, [id]: "" });
+      setCommentContent(prev => ({ ...prev, [id]: "" }));
     }
   };
 
   const toggleCommentsVisibility = async (id, type) => {
     if (!showComments[id]) {
       const nextCursor = await fetchComments(id, type);
-      setCommentCursors((prev) => ({ ...prev, [id]: nextCursor }));
+      setCommentCursors(prev => ({ ...prev, [id]: nextCursor }));
     }
-    setShowComments({ ...showComments, [id]: !showComments[id] });
+    setShowComments(prev => ({ ...prev, [id]: !prev[id] }));
   };
 
   const loadMoreComments = async (id, type) => {
-    const cursor = commentCursors[id];
-    if (cursor) {
-      const nextCursor = await fetchComments(id, type, cursor);
-      setCommentCursors((prev) => ({ ...prev, [id]: nextCursor }));
-    }
+    const nextCursor = await fetchComments(id, type, commentCursors[id]);
+    setCommentCursors(prev => ({ ...prev, [id]: nextCursor }));
   };
 
   const renderContentCard = (item) => {
@@ -266,35 +277,30 @@ export function HomePage() {
         Discover
       </h1>
 
-      {[...publicBooks.map((b) => ({ ...b, type: "book" })), ...publicScripts.map((s) => ({ ...s, type: "script" }))]
+      {feedLoading ? (
+        <div className="flex justify-center py-12">
+          <Loader2 className="animate-spin w-8 h-8" style={{ color: "#D4A574" }} />
+        </div>
+      ) : (
+        feed.map(renderContentCard)
+      )}
 
-        .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
-
-        .slice(0, page * itemsPerPage)
-
-        .map(renderContentCard)}
-
-      {loading && (
+      {loadingMore && (
         <div className="flex justify-center py-6">
-          <Loader2 className="animate-spin w-8 h-8" />
+          <Loader2 className="animate-spin w-8 h-8" style={{ color: "#D4A574" }} />
         </div>
       )}
 
-      {!loading &&
-        [...publicBooks, ...publicScripts].length > page * itemsPerPage && (
-
-          <div className="flex justify-center py-4">
-
-            <button
-              onClick={loadMore}
-              className="border bg-amber-200  font-bold px-4 py-2 rounded-md"
-            >
-              Load More
-            </button>
-
-          </div>
-
-        )}
+      {!feedLoading && !loadingMore && hasMore && (
+        <div className="flex justify-center py-4">
+          <button
+            onClick={loadMore}
+            className="border bg-amber-200 font-bold px-4 py-2 rounded-md"
+          >
+            Load More
+          </button>
+        </div>
+      )}
 
     </div>
 
