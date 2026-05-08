@@ -30,14 +30,14 @@ function Signin() {
     }
 
     setIsLoading(true);
-    const success = await login(username_EMAIL, password);
+    const result = await login(username_EMAIL, password);
     setIsLoading(false);
     
-    if (success) {
+    if (result.success) {
       toast.success("Logged in successfully");
       navigate("/");
     } else {
-      toast.error("Invalid credentials or login failed");
+      toast.error(result.error);
     }
   };
 

@@ -168,12 +168,15 @@ export function AppProvider({ children }) {
       if (data?.user) {
         setCurrentUser(data.user);
         localStorage.setItem('isAuthenticated', 'true');
-        return true;
+        return { success: true };
       }
-      return false;
+      return { success: false, error: data?.msg || 'Login failed' };
     } catch (err) {
-      console.error(err);
-      return false;
+      const msg = err.response?.data?.msg
+        || err.response?.data?.errors?.[0]?.message
+        || (err.response?.status === 429 ? 'Too many attempts. Please wait and try again.' : null)
+        || 'Login failed. Please try again.';
+      return { success: false, error: msg };
     }
   };
 
