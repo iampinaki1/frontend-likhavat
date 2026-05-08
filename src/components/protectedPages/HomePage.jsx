@@ -95,8 +95,12 @@ export function HomePage() {
 
           <div className="flex items-center space-x-3">
 
-            <div className="h-10 w-10 rounded-full bg-gray-200 flex items-center justify-center font-semibold">
-              {(item.author?.username || "U").charAt(0).toUpperCase()}
+            <div className="h-10 w-10 rounded-full bg-gray-200 flex items-center justify-center font-semibold overflow-hidden flex-shrink-0">
+              {item.author?.profilePic ? (
+                <img src={item.author.profilePic} alt={item.author.username} className="h-full w-full object-cover" />
+              ) : (
+                <span>{(item.author?.username || "U").charAt(0).toUpperCase()}</span>
+              )}
             </div>
 
             <div>
