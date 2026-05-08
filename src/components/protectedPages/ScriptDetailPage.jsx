@@ -28,6 +28,8 @@ export function ScriptDetailPage() {
   const [accessRequests, setAccessRequests] = useState([]);
   const [accessLoading, setAccessLoading] = useState(false);
   const [accessRequested, setAccessRequested] = useState(false);
+  const [editingTitle, setEditingTitle] = useState(false);
+  const [titleDraft, setTitleDraft] = useState("");
 
   // Load script
   useEffect(() => {
@@ -220,6 +222,17 @@ export function ScriptDetailPage() {
     }
   };
 
+  const handleSaveTitle = async () => {
+    const trimmed = titleDraft.trim();
+    if (!trimmed || trimmed === script.title) { setEditingTitle(false); return; }
+    try {
+      await updateScript(script._id, { title: trimmed });
+      setScript(prev => ({ ...prev, title: trimmed }));
+      toast.success("Title updated");
+    } catch { toast.error("Failed to update title"); }
+    setEditingTitle(false);
+  };
+
   const handleToggleVisibility = async () => {    const newVis = script.visibility === "public" ? "private" : "public";
     try {
       await updateScript(script._id, { visibility: newVis });
@@ -238,7 +251,27 @@ export function ScriptDetailPage() {
         )}
         <div className="p-6">
           <div className="flex flex-wrap items-start justify-between gap-2 mb-2">
-            <h1 className="text-2xl sm:text-3xl font-semibold">{script.title}</h1>
+            {isAuthor && editingTitle ? (
+              <input
+                autoFocus
+                className="text-2xl sm:text-3xl font-semibold bg-transparent border-b-2 outline-none flex-1 min-w-0"
+                style={{ borderColor: "#D4A574" }}
+                value={titleDraft}
+                onChange={e => setTitleDraft(e.target.value)}
+                onBlur={handleSaveTitle}
+                onKeyDown={e => { if (e.key === "Enter") handleSaveTitle(); if (e.key === "Escape") setEditingTitle(false); }}
+                maxLength={200}
+              />
+            ) : (
+              <h1
+                className={`text-2xl sm:text-3xl font-semibold ${isAuthor ? "cursor-pointer hover:opacity-70" : ""}`}
+                title={isAuthor ? "Click to edit title" : undefined}
+                onClick={() => { if (isAuthor) { setTitleDraft(script.title); setEditingTitle(true); } }}
+              >
+                {script.title}
+                {isAuthor && <span className="ml-2 text-sm font-normal" style={{ color: "#D4A574" }}>✎</span>}
+              </h1>
+            )}
             <div className="flex gap-1.5 flex-wrap">
               <span className="px-2 py-0.5 rounded-full text-xs font-medium" style={{ backgroundColor: "#D4A574", color: "#fff" }}>{script.genre}</span>
               <span className="px-2 py-0.5 rounded-full text-xs font-medium border" style={{ borderColor: "#D4A574", color: "#D4A574" }}>{script.purpose}</span>

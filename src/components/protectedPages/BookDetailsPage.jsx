@@ -18,6 +18,8 @@ export function BookDetailPage() {
   const [showAddChapter, setShowAddChapter] = useState(false);
   const [newChapter, setNewChapter] = useState({ title: "", content: "" });
   const [addingChapter, setAddingChapter] = useState(false);
+  const [editingTitle, setEditingTitle] = useState(false);
+  const [titleDraft, setTitleDraft] = useState("");
 
   const navigate = useNavigate();
 
@@ -95,6 +97,17 @@ export function BookDetailPage() {
   const handleBookmark = () => {
     toggleBookmark(book._id || book.id, "book");
     toast.success(isBookmarked ? "Removed from bookmarks" : "Added to bookmarks");
+  };
+
+  const handleSaveTitle = async () => {
+    const trimmed = titleDraft.trim();
+    if (!trimmed || trimmed === book.title) { setEditingTitle(false); return; }
+    try {
+      await updateBook(book._id || book.id, { title: trimmed });
+      setBook(prev => ({ ...prev, title: trimmed }));
+      toast.success("Title updated");
+    } catch { toast.error("Failed to update title"); }
+    setEditingTitle(false);
   };
 
   const handleShare = async () => {
@@ -206,9 +219,27 @@ export function BookDetailPage() {
 
         <div className="p-6">
 
-          <h1 className="text-3xl font-bold mb-2">
-            {book.title}
-          </h1>
+          {canEdit && editingTitle ? (
+            <input
+              autoFocus
+              className="text-3xl font-bold mb-2 bg-transparent border-b-2 outline-none w-full"
+              style={{ borderColor: "#D4A574" }}
+              value={titleDraft}
+              onChange={e => setTitleDraft(e.target.value)}
+              onBlur={handleSaveTitle}
+              onKeyDown={e => { if (e.key === "Enter") handleSaveTitle(); if (e.key === "Escape") setEditingTitle(false); }}
+              maxLength={200}
+            />
+          ) : (
+            <h1
+              className={`text-3xl font-bold mb-2 ${canEdit ? "cursor-pointer hover:opacity-70" : ""}`}
+              title={canEdit ? "Click to edit title" : undefined}
+              onClick={() => { if (canEdit) { setTitleDraft(book.title); setEditingTitle(true); } }}
+            >
+              {book.title}
+              {canEdit && <span className="ml-2 text-sm font-normal" style={{ color: "#D4A574" }}>✎</span>}
+            </h1>
+          )}
 
           <p className="text-gray-500 mb-4">
             by {book.authorName}
