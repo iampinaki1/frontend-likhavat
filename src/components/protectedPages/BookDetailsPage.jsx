@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { useParams, Link, useNavigate } from "react-router-dom";
 import { useApp, api } from "../../context/Appcontext.jsx";
-import { MessageCircle, BookOpen, Trash2, Edit, Eye, EyeOff, Maximize2, Loader2, Book, BookHeart, BookOpenCheck, Plus, X } from "lucide-react";
+import { MessageCircle, BookOpen, Trash2, Edit, Eye, EyeOff, Maximize2, Loader2, Book, BookHeart, BookOpenCheck, Plus, X, Share2 } from "lucide-react";
 import { format } from "date-fns";
 import { toast } from "sonner";
 
@@ -95,6 +95,18 @@ export function BookDetailPage() {
   const handleBookmark = () => {
     toggleBookmark(book._id || book.id, "book");
     toast.success(isBookmarked ? "Removed from bookmarks" : "Added to bookmarks");
+  };
+
+  const handleShare = async () => {
+    const url = `${window.location.origin}/book/${book._id || book.id}`;
+    if (navigator.share) {
+      try {
+        await navigator.share({ title: book.title, text: book.description, url });
+      } catch {}
+    } else {
+      await navigator.clipboard.writeText(url);
+      toast.success("Link copied!");
+    }
   };
 
   const handleComment = () => {
@@ -219,6 +231,10 @@ export function BookDetailPage() {
               ) : (
                 <BookOpen className="w-5 h-5" />
               )}
+            </button>
+
+            <button onClick={handleShare} className="flex items-center gap-1" title="Share">
+              <Share2 className="w-5 h-5" />
             </button>
 
             <button className="flex items-center gap-1" title="Comments">

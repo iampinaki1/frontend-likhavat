@@ -2,8 +2,9 @@ import Layout from "../layout/Background.jsx";
 import { Link } from "react-router-dom";
 import { useRouteError } from 'react-router-dom'
 
-export default function Error404() {
-  const err = useRouteError() || {};
+export default function ErrorPage({ error }) {
+  const routeErr = useRouteError() || {};
+  const err = error || routeErr;
   return (
     <>
       <Layout>

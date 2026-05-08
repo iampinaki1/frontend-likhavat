@@ -4,7 +4,7 @@ import { useApp, api } from "../../context/Appcontext.jsx";
 import {
   MessageCircle, Film, Trash2, Edit, Users, GitBranch,
   Clock, User, Maximize2, Loader2, Book, BookHeart,
-  BookOpen, BookOpenCheck, UserPlus, Check, X,
+  BookOpen, BookOpenCheck, UserPlus, Check, X, Share2,
 } from "lucide-react";
 import { format } from "date-fns";
 import { toast } from "sonner";
@@ -210,8 +210,17 @@ export function ScriptDetailPage() {
     }
   };
 
-  const handleToggleVisibility = async () => {
-    const newVis = script.visibility === "public" ? "private" : "public";
+  const handleShare = async () => {
+    const url = `${window.location.origin}/script/${script._id}`;
+    if (navigator.share) {
+      try { await navigator.share({ title: script.title, text: script.description, url }); } catch {}
+    } else {
+      await navigator.clipboard.writeText(url);
+      toast.success("Link copied!");
+    }
+  };
+
+  const handleToggleVisibility = async () => {    const newVis = script.visibility === "public" ? "private" : "public";
     try {
       await updateScript(script._id, { visibility: newVis });
       setScript(prev => ({ ...prev, visibility: newVis }));
@@ -255,6 +264,9 @@ export function ScriptDetailPage() {
             </button>
             <button className={BTN} style={BTN_OUTLINE}>
               <MessageCircle className="w-4 h-4" /> {(script.comments || []).length}
+            </button>
+            <button onClick={handleShare} className={BTN} style={BTN_OUTLINE}>
+              <Share2 className="w-4 h-4" /> Share
             </button>
             {!isAuthor && !isAllowedUser && currentUser && (
               <button onClick={handleRequestAccess} className={BTN} style={BTN_OUTLINE} disabled={accessRequested}>

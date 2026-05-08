@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect, useCallback } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { useApp, api } from "../../context/Appcontext.jsx";
-import { Heart, User, ChevronUp, ChevronDown, Loader2, Trash2 } from "lucide-react";
+import { Heart, User, ChevronUp, ChevronDown, Loader2, Trash2, Share2 } from "lucide-react";
 import { toast } from "sonner";
 
 // Estimate how many lines fit in the content area based on viewport
@@ -324,9 +324,9 @@ export function PoemsPage() {
 
       const absDy = Math.abs(deltaY);
 
-      // Fast swipe (velocity > 0.5 px/ms) OR long swipe (> 120px) → change poem
-      const isFast = velocity > 0.5;
-      const isLong = absDy > 120;
+      // Fast swipe (velocity > 1.2 px/ms) OR long swipe (> 220px) → change poem
+      const isFast = velocity > 1.2;
+      const isLong = absDy > 220;
 
       if (isFast || isLong) {
         if (deltaY > 0) goToNext();
@@ -456,6 +456,18 @@ export function PoemsPage() {
       toast.success("Poem deleted");
     } catch {
       toast.error("Failed to delete poem");
+    }
+  };
+
+  const handleShare = async () => {
+    if (!currentPoem) return;
+    const url = `${window.location.origin}/poems`;
+    const shareData = { title: currentPoem.title, text: `${currentPoem.title} by ${currentPoem.author?.username || currentPoem.authorName}`, url };
+    if (navigator.share) {
+      try { await navigator.share(shareData); } catch {}
+    } else {
+      await navigator.clipboard.writeText(url);
+      toast.success("Link copied!");
     }
   };
 
@@ -691,6 +703,19 @@ export function PoemsPage() {
               </div>
             </button>
           )}
+
+          {/* Share Button */}
+          <button
+            onClick={handleShare}
+            className="flex flex-col items-center space-y-1 focus:outline-none group"
+          >
+            <div
+              className="w-10 h-10 sm:w-12 sm:h-12 md:w-14 md:h-14 rounded-full shadow-lg flex items-center justify-center transition-transform group-hover:scale-110"
+              style={{ backgroundColor: '#FFF8ED', border: '2px solid #E5D4C1' }}
+            >
+              <Share2 className="w-5 h-5 sm:w-6 sm:h-6 md:w-7 md:h-7" style={{ color: '#D4A574' }} />
+            </div>
+          </button>
 
           {/* Author Avatar (clickable) */}
           <button
