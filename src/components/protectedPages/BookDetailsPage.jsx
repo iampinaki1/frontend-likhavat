@@ -122,12 +122,14 @@ export function BookDetailPage() {
     }
   };
 
-  const handleComment = () => {
+  const handleComment = async () => {
     if (!commentText.trim()) return;
-
-    addComment(book._id || book.id, "book", commentText);
+    const newComment = await addComment(book._id || book.id, "book", commentText);
     setCommentText("");
-    toast.success("Comment added!");
+    if (newComment) {
+      setBook(prev => ({ ...prev, comments: [...(prev.comments || []), newComment] }));
+      toast.success("Comment added!");
+    }
   };
 
   const loadMoreComments = async () => {

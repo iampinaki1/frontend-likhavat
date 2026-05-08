@@ -1,12 +1,13 @@
 import React, { useState, useEffect, useCallback } from "react";
 import { useApp, api } from "../../context/Appcontext.jsx";
-import { MessageCircle, BookOpen, Film, Eye, EyeOff, Loader2, Book, BookHeart, BookOpenCheck } from "lucide-react";
+import { MessageCircle, BookOpen, Eye, EyeOff, Loader2, Book, BookHeart, BookOpenCheck } from "lucide-react";
 import { format } from "date-fns";
 import { Link } from "react-router-dom";
+import { toast } from "sonner";
 
 export function HomePage() {
 
-  const { currentUser, toggleLike, toggleBookmark, addComment, fetchComments } = useApp();
+  const { currentUser, toggleLike, toggleBookmark, addComment } = useApp();
 
   const [feed, setFeed] = useState([]);
   const [cursor, setCursor] = useState(null);
@@ -65,28 +66,84 @@ export function HomePage() {
     setLoadingMore(false);
   };
 
-  const handleLike = (id, type) => toggleLike(id, type);
-  const handleBookmark = (id, type) => toggleBookmark(id, type);
+  const handleLike = (id, type) => {
+    const uid = currentUser?._id || currentUser?.id;
+    if (!uid) return;
+    setFeed(prev => prev.map(item => {
+      if ((item._id || item.id) !== id) return item;
+      const likes = item.likes || [];
+      const isLiked = likes.some(l => (l._id || l)?.toString() === uid?.toString());
+      toast.success(isLiked ? "Removed like" : "Liked");
+      return {
+        ...item,
+        likes: isLiked
+          ? likes.filter(l => (l._id || l)?.toString() !== uid?.toString())
+          : [...likes, uid],
+      };
+    }));
+    toggleLike(id, type);
+  };
 
-  const handleComment = (id, type) => {
+  const handleBookmark = (id, type) => {
+    const isBookmarked = type === "book"
+      ? (currentUser?.bookmarksBook || []).some(x => x?.toString() === id?.toString())
+      : (currentUser?.bookmarksScript || []).some(x => x?.toString() === id?.toString());
+    toast.success(isBookmarked ? "Removed bookmark" : "Bookmarked");
+    toggleBookmark(id, type);
+  };
+
+  const handleComment = async (id, type) => {
     const content = commentContent[id];
-    if (content?.trim()) {
-      addComment(id, type, content);
-      setCommentContent(prev => ({ ...prev, [id]: "" }));
+    if (!content?.trim()) return;
+    setCommentContent(prev => ({ ...prev, [id]: "" }));
+    const newComment = await addComment(id, type, content);
+    if (newComment) {
+      setFeed(prev => prev.map(item =>
+        (item._id || item.id) === id
+          ? { ...item, comments: [...(item.comments || []), newComment] }
+          : item
+      ));
+      toast.success("Comment added");
     }
   };
 
   const toggleCommentsVisibility = async (id, type) => {
     if (!showComments[id]) {
-      const nextCursor = await fetchComments(id, type);
-      setCommentCursors(prev => ({ ...prev, [id]: nextCursor }));
+      try {
+        const endpoint = type === 'book'
+          ? `/books/book/${id}/comment`
+          : `/scripts/script/${id}/comment`;
+        const { data } = await api.get(endpoint);
+        if (data?.success) {
+          setFeed(prev => prev.map(item =>
+            (item._id || item.id) === id
+              ? { ...item, comments: data.comments || [] }
+              : item
+          ));
+          setCommentCursors(prev => ({ ...prev, [id]: data.nextCursor || null }));
+        }
+      } catch (e) { console.error(e); }
     }
     setShowComments(prev => ({ ...prev, [id]: !prev[id] }));
   };
 
   const loadMoreComments = async (id, type) => {
-    const nextCursor = await fetchComments(id, type, commentCursors[id]);
-    setCommentCursors(prev => ({ ...prev, [id]: nextCursor }));
+    const cursor = commentCursors[id];
+    if (!cursor) return;
+    try {
+      const endpoint = type === 'book'
+        ? `/books/book/${id}/comment?lastId=${cursor}`
+        : `/scripts/script/${id}/comment?lastId=${cursor}`;
+      const { data } = await api.get(endpoint);
+      if (data?.success) {
+        setFeed(prev => prev.map(item =>
+          (item._id || item.id) === id
+            ? { ...item, comments: [...(item.comments || []), ...(data.comments || [])] }
+            : item
+        ));
+        setCommentCursors(prev => ({ ...prev, [id]: data.nextCursor || null }));
+      }
+    } catch (e) { console.error(e); }
   };
 
   const renderContentCard = (item) => {

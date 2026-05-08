@@ -186,11 +186,14 @@ export function ScriptDetailPage() {
     } catch { toast.error("Failed to reject"); }
   };
 
-  const handleComment = () => {
+  const handleComment = async () => {
     if (!commentText.trim()) return;
-    addComment(script._id, "script", commentText);
+    const newComment = await addComment(script._id, "script", commentText);
     setCommentText("");
-    toast.success("Comment added");
+    if (newComment) {
+      setScript(prev => ({ ...prev, comments: [...(prev.comments || []), newComment] }));
+      toast.success("Comment added");
+    }
   };
 
   const loadMoreComments = async () => {

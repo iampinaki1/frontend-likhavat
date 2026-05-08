@@ -409,7 +409,7 @@ export function AppProvider({ children }) {
   };
 
   const addComment = async (id, type, content) => {
-    if (!currentUser) return;
+    if (!currentUser) return null;
     try {
       if (type === 'book') {
         const { data } = await api.post(`/books/book/${id}/comment`, { text: content });
@@ -419,6 +419,7 @@ export function AppProvider({ children }) {
               ? { ...b, comments: [...(b.comments || []), data.comment] }
               : b
           ));
+          return data.comment;
         }
       } else {
         const { data } = await api.post(`/scripts/script/${id}/comment`, { text: content });
@@ -428,11 +429,13 @@ export function AppProvider({ children }) {
               ? { ...s, comments: [...(s.comments || []), data.comment] }
               : s
           ));
+          return data.comment;
         }
       }
     } catch (err) {
       console.error(err);
     }
+    return null;
   };
 
   const fetchComments = async (id, type, cursor = null) => {
